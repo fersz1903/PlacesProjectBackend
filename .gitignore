@@ -1,0 +1,5 @@
+api/node_modules/
+
+api/package*.json
+
+api/.env
