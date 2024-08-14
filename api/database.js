@@ -13,7 +13,9 @@ const uuid = require("uuid");
 
 const serviceAccount = require("./serviceAccount.json");
 const { response } = require("express");
-const { createSignInToken } = require("./jwt");
+const { createSignInToken, decodeToken } = require("./jwt");
+require("dotenv").config();
+const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
 
 initializeApp({
   credential: cert(serviceAccount),
@@ -40,32 +42,40 @@ async function addData() {
 
 ///#endregion test
 
-async function getUserToken(username, password) {
+async function getUserToken(username, password, res) {
   try {
     const usersRef = db.collection("users");
-    const snapshot = await usersRef.where("username", "==", username).get();
+    const snapshot = await usersRef.where("email", "==", username).get();
     if (snapshot.empty) {
       console.log("No matching documents.");
-      return { result: false, data: "User Not Found" };
+      return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
       // token oluştur ve geri döndür
       const doc = snapshot.docs[0];
 
       if (checkPassword(password, doc.data().password)) {
-        const token = createSignInToken(doc.id, doc.data().username);
-        return { result: true, data: token };
+        const token = createSignInToken(
+          doc.id,
+          doc.data().username,
+          doc.data().role
+        );
+        return res.status(200).send({ result: true, data: token });
       } else {
-        return { result: false, data: "password incorrect" };
+        return res
+          .status(401)
+          .send({ result: false, data: "password incorrect" });
       }
     }
   } catch (error) {
     console.log("Cannot get user: ", error);
-    return { result: false, data: "Server Error" };
+    return res
+      .status(500)
+      .send({ result: false, data: "Server Error, Cannot get user" });
   }
 }
 
 function checkPassword(reqPassword, password) {
-  // password hash required
+  // TODO password hash required
   return reqPassword.toString() === password.toString();
 }
 
@@ -83,8 +93,40 @@ async function registerUser() {
   }
 }
 
+async function getUser(req, res) {
+  console.log("getUser");
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    // find user and get properties
+    const userRef = db.collection("users").doc(uid);
+    const doc = await userRef.get();
+    if (!doc.exists) {
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    } else {
+      return res.status(200).send({
+        result: true,
+        data: {
+          email: doc.data().email,
+          firstname: doc.data().firstname,
+          lastname: doc.data().lastname,
+          phone: doc.data().phone,
+          quota: doc.data().quota,
+        },
+      });
+    }
+  } catch (error) {
+    return res.status(500).send({ result: false, data: error });
+  }
+}
+
 module.exports = {
-  addData,
-  registerUser,
   getUserToken,
+  getUser,
 };
