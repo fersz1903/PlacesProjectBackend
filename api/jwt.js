@@ -3,33 +3,52 @@ require("dotenv").config();
 const jwtSecret = process.env.JWTSECRET;
 const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
 
-function createSignInToken(_userid, _username) {
-  const token = jwt.sign({ userId: _userid, username: _username }, jwtSecret, {
-    expiresIn: "1h",
-  });
+function createSignInToken(_userid, _username, _role) {
+  const token = jwt.sign(
+    { userId: _userid, username: _username, role: _role },
+    jwtSecret,
+    {
+      expiresIn: "1h",
+    }
+  );
   console.log(token);
   return token;
 }
 
-function validateToken(token) {
-  try {
-    if (!token) {
-      return false;
+function validateToken(token, res) {
+  // try {
+  //   if (!token) {
+  //     // No token
+  //     return res.status(400).send(false);
+  //   }
+  //   const verified = jwt.verify(token, jwtSecret);
+  //   if (verified) {
+  //     // Access Granted
+  //     return res.status(200).send(true);
+  //   } else {
+  //     // Access Denied
+  //     return res.status(401).send(false);
+  //   }
+  // } catch (error) {
+  //   // Access Denied
+  //   return res.status(401).send(false);
+  // }
+  jwt.verify(token, jwtSecret, (err) => {
+    if (err) {
+      return res
+        .status(403)
+        .json({ result: false, data: "Failed to authenticate token" });
     }
-    const verified = jwt.verify(token, jwtSecret);
-    if (verified) {
-      return true;
-    } else {
-      // Access Denied
-      return false;
-    }
-  } catch (error) {
-    // Access Denied
-    return false;
-  }
+    return res.status(200).json({ result: true, data: "Token confirmed" });
+  });
+}
+
+function decodeToken(token) {
+  return jwt.decode(token);
 }
 
 module.exports = {
   createSignInToken,
   validateToken,
+  decodeToken,
 };
