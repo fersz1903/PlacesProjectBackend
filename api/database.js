@@ -14,6 +14,7 @@ const uuid = require("uuid");
 const serviceAccount = require("./serviceAccount.json");
 const { response } = require("express");
 const { createSignInToken, decodeToken } = require("./jwt");
+const { createHashedPassword, comparePassword } = require("./password.js");
 require("dotenv").config();
 const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
 
@@ -29,23 +30,14 @@ function createUUId() {
   return newuuid;
 }
 
-///#region test
-async function addData() {
-  const docRef = db.collection("users").doc("alovelace");
+//#region test
 
-  await docRef.set({
-    first: "Ada",
-    last: "Lovelace",
-    born: 1815,
-  });
-}
+//#endregion
 
-///#endregion test
-
-async function getUserToken(username, password, res) {
+async function getUserToken(email, password, res) {
   try {
     const usersRef = db.collection("users");
-    const snapshot = await usersRef.where("email", "==", username).get();
+    const snapshot = await usersRef.where("email", "==", email).get();
     if (snapshot.empty) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
@@ -53,10 +45,10 @@ async function getUserToken(username, password, res) {
       // token oluştur ve geri döndür
       const doc = snapshot.docs[0];
 
-      if (checkPassword(password, doc.data().password)) {
+      if ((await comparePassword(password, doc.data().password)) == true) {
         const token = createSignInToken(
           doc.id,
-          doc.data().username,
+          doc.data().email,
           doc.data().role
         );
         return res.status(200).send({ result: true, data: token });
@@ -71,25 +63,6 @@ async function getUserToken(username, password, res) {
     return res
       .status(500)
       .send({ result: false, data: "Server Error, Cannot get user" });
-  }
-}
-
-function checkPassword(reqPassword, password) {
-  // TODO password hash required
-  return reqPassword.toString() === password.toString();
-}
-
-async function registerUser() {
-  try {
-    const uuid = createUUId();
-    const docRef = db.collection("users").doc(uuid.toString());
-
-    await docRef.set({ first: "Ada", last: "Lovelace", born: 1815 });
-
-    return true;
-  } catch (error) {
-    console.log("database error: ", error);
-    return false;
   }
 }
 
@@ -126,7 +99,97 @@ async function getUser(req, res) {
   }
 }
 
+async function userExist(email) {
+  try {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.where("email", "==", email).get();
+    return !snapshot.empty; // if user exist returns true
+  } catch (error) {
+    console.log("Cannot get user: ", error);
+    return error;
+  }
+}
+
+//#region admin funcs
+async function getUsers(req, res) {
+  console.log("getUsers");
+  try {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.get();
+    if (snapshot.empty) {
+      return res.status(404).send({ result: false, data: "Users Not Found" });
+    }
+    const usersArray = [];
+    const userCount = snapshot.size;
+
+    snapshot.forEach((doc) => {
+      usersArray.push({
+        uid: doc.id,
+        email: doc.data().email,
+        firstname: doc.data().firstname,
+        lastname: doc.data().lastname,
+        phone: doc.data().phone,
+        quota: doc.data().quota,
+        role: doc.data().role,
+        registrationDate: doc.data().registrationDate.toDate(),
+      });
+    });
+    return res.status(200).send({
+      result: true,
+      users: usersArray,
+      userCount: userCount,
+    });
+  } catch (error) {
+    return res.status(500).send({ result: false, data: error });
+  }
+}
+
+async function registerUser(req, res) {
+  try {
+    const { email, firstname, lastname, password, phone, quota } = req.body;
+
+    if (!(email && firstname && lastname && password && phone && quota)) {
+      return res.status(400).json({ error: "Missing properties of user!" });
+    }
+
+    if ((await userExist(email)) === true) {
+      return res.status(403).json({ error: "User already exists!" });
+    }
+
+    const uuid = createUUId();
+    const docRef = db.collection("users").doc(uuid.toString());
+
+    const hashedPassword = await createHashedPassword(password);
+
+    await docRef.set({
+      email: email,
+      firstname: firstname,
+      lastname: lastname,
+      password: hashedPassword,
+      phone: phone,
+      quota: quota,
+      reqistrationDate: Timestamp.now(),
+      role: "user",
+    });
+
+    return res
+      .status(200)
+      .send({ result: true, data: "User registered successfuly" });
+  } catch (error) {
+    console.log("Cannot register user: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, Cannot register user",
+      error: error,
+    });
+  }
+}
+
+//#endregion
+
 module.exports = {
   getUserToken,
   getUser,
+  getUsers,
+  registerUser,
 };
