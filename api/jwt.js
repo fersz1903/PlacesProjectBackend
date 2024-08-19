@@ -3,9 +3,9 @@ require("dotenv").config();
 const jwtSecret = process.env.JWTSECRET;
 const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
 
-function createSignInToken(_userid, _username, _role) {
+function createSignInToken(_userid, _email, _role) {
   const token = jwt.sign(
-    { userId: _userid, username: _username, role: _role },
+    { userId: _userid, email: _email, role: _role },
     jwtSecret,
     {
       expiresIn: "1h",

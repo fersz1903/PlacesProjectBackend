@@ -8,11 +8,13 @@ const csrf = require("csurf");
 const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
 const tokenValidate = require("./Middlewares/tokenValidation.js");
+const isAdmin = require("./Middlewares/isAdmin.js");
 
 // ROUTES
 const home = require("./Routes/home.js");
 const login = require("./Routes/login.js");
 const validate = require("./Routes/validate.js");
+const admin = require("./Routes/admin.js");
 
 require("dotenv").config();
 
@@ -39,3 +41,4 @@ app.listen(PORT, () => {
 app.use("/home", tokenValidate, home);
 app.use("/login", login);
 app.use("/validate", validate);
+app.use("/admin", [tokenValidate, isAdmin], admin);
