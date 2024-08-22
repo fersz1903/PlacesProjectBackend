@@ -47,8 +47,27 @@ function decodeToken(token) {
   return jwt.decode(token);
 }
 
+function createPasswordResetToken(_email) {
+  const token = jwt.sign({ email: _email }, jwtSecret, {
+    expiresIn: "10m",
+  });
+  console.log(token);
+  return token;
+}
+
+function verifyResetToken(token) {
+  try {
+    const decoded = jwt.verify(token, jwtSecret);
+    return decoded;
+  } catch (error) {
+    return error;
+  }
+}
+
 module.exports = {
   createSignInToken,
   validateToken,
   decodeToken,
+  createPasswordResetToken,
+  verifyResetToken,
 };
