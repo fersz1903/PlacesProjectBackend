@@ -15,6 +15,7 @@ const home = require("./Routes/home.js");
 const login = require("./Routes/login.js");
 const validate = require("./Routes/validate.js");
 const admin = require("./Routes/admin.js");
+const user = require("./Routes/user.js");
 
 require("dotenv").config();
 
@@ -42,3 +43,4 @@ app.use("/home", tokenValidate, home);
 app.use("/login", login);
 app.use("/validate", validate);
 app.use("/admin", [tokenValidate, isAdmin], admin);
+app.use("/user", user);

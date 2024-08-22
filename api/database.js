@@ -13,7 +13,7 @@ const uuid = require("uuid");
 
 const serviceAccount = require("./serviceAccount.json");
 const { response } = require("express");
-const { createSignInToken, decodeToken } = require("./jwt");
+const { createSignInToken, decodeToken, verifyResetToken } = require("./jwt");
 const { createHashedPassword, comparePassword } = require("./password.js");
 require("dotenv").config();
 const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
@@ -184,12 +184,128 @@ async function registerUser(req, res) {
     });
   }
 }
-
 //#endregion
+
+async function writeResetTokenUser(email, token) {
+  console.log("writeResetToken:", email);
+  try {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.where("email", "==", email).get();
+
+    if (snapshot.empty) {
+      return false;
+    }
+    const doc = snapshot.docs[0];
+
+    const userRef = db.collection("users").doc(doc.id);
+
+    const res = await userRef.set(
+      {
+        resetToken: token,
+      },
+      { merge: true }
+    );
+    return res;
+  } catch (error) {
+    return error;
+  }
+}
+
+async function isResetTokenTrue(email, token) {
+  console.log("confirm reset token:", email);
+  try {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.where("email", "==", email).get();
+
+    if (snapshot.empty) {
+      return false;
+    }
+    const doc = snapshot.docs[0];
+
+    console.log("token equal: ", doc.data().resetToken == token);
+
+    return doc.data().resetToken == token;
+  } catch (error) {
+    return error;
+  }
+}
+
+async function resetPassword(req, res) {
+  try {
+    const { newPassword } = req.body;
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    // check token exist
+    if (!token) {
+      return res.status(404).json({ result: false, data: "No token provided" });
+    }
+    // check parameter exist
+    if (!newPassword) {
+      return res
+        .status(400)
+        .json({ result: false, data: "newPassword required" });
+    }
+
+    // verify token
+    const decoded = verifyResetToken(token);
+    if (decoded instanceof Error) {
+      return res
+        .status(400)
+        .json({ result: false, data: "Invalid or expired token" });
+    }
+
+    // is token equal to from db token
+    const isTokenTrue = await isResetTokenTrue(decoded.email, token);
+    if (isTokenTrue instanceof Error || isTokenTrue != true) {
+      return res
+        .status(400)
+        .json({ result: false, data: "Invalid or expired token" });
+    }
+
+    // update user with new password
+    const isUpdateSuccess = await updatePassword(decoded.email, newPassword);
+    console.log("decoded email", decoded.email);
+    if (isUpdateSuccess instanceof Error || isUpdateSuccess != true) {
+      console.log(isUpdateSuccess);
+      return res
+        .status(400)
+        .json({ result: false, data: "Invalid or expired token" });
+    }
+    return res
+      .status(200)
+      .json({ result: true, data: "Password reset successful" });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ result: false, data: "An unexpected error occurred" });
+  }
+}
+
+async function updatePassword(email, newPassword) {
+  try {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.where("email", "==", email).get();
+
+    if (snapshot.empty) {
+      return false;
+    }
+    const doc = snapshot.docs[0];
+    const userRef = usersRef.doc(doc.id);
+    const hashedPassword = await createHashedPassword(newPassword);
+
+    const res = await userRef.update({ password: hashedPassword });
+    return true;
+  } catch (error) {
+    return error;
+  }
+}
 
 module.exports = {
   getUserToken,
   getUser,
   getUsers,
   registerUser,
+  writeResetTokenUser,
+  isResetTokenTrue,
+  resetPassword,
 };
