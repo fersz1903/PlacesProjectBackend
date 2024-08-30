@@ -95,7 +95,9 @@ async function getUser(req, res) {
       });
     }
   } catch (error) {
-    return res.status(500).send({ result: false, data: error });
+    return res
+      .status(500)
+      .send({ result: false, data: "An error occured getting user infos" });
   }
 }
 
@@ -131,7 +133,10 @@ async function getUsers(req, res) {
         phone: doc.data().phone,
         quota: doc.data().quota,
         role: doc.data().role,
-        registrationDate: doc.data().registrationDate.toDate(),
+        registrationDate:
+          doc.data().registrationDate != null
+            ? doc.data().registrationDate.toDate()
+            : 0,
       });
     });
     return res.status(200).send({
@@ -140,7 +145,10 @@ async function getUsers(req, res) {
       userCount: userCount,
     });
   } catch (error) {
-    return res.status(500).send({ result: false, data: error });
+    console.log(error);
+    return res
+      .status(500)
+      .send({ result: false, data: "An error occured while getting users" });
   }
 }
 
@@ -180,10 +188,86 @@ async function registerUser(req, res) {
     return res.status(500).send({
       result: false,
       data: "Server Error, Cannot register user",
-      error: error,
     });
   }
 }
+
+async function getUsersCount(req, res) {
+  console.log("getUsersCount");
+  try {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.get();
+    if (snapshot.empty) {
+      return res.status(404).send({ result: false, data: "Users Not Found" });
+    }
+    const userCount = snapshot.size;
+    return res.status(200).send({
+      result: true,
+      usersCount: userCount,
+    });
+  } catch (error) {
+    return res.status(500).send({
+      result: false,
+      data: "An error occured while getting users count",
+    });
+  }
+}
+
+async function updateUser(req, res) {
+  console.log("updateUser");
+  try {
+    const { uid, email, firstname, lastname, phone, role } = req.body;
+
+    if (!(uid && email && firstname && lastname && phone && role)) {
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties of user!" });
+    }
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+    if (snapshot.empty) {
+      console.log("No matching documents.");
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    } else {
+      const updateRes = await userRef.update({
+        email: email,
+        firstname: firstname,
+        lastname: lastname,
+        phone: phone,
+        role: role,
+      });
+
+      if (updateRes instanceof Error) {
+        console.log(updateRes);
+        return res
+          .status(500)
+          .send({ result: false, data: "User infos could not write db" });
+      }
+    }
+    return res
+      .status(200)
+      .send({ result: true, data: "User updated successfuly" });
+  } catch (error) {
+    console.log("Cannot update user: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot update user",
+    });
+  }
+}
+
+async function deleteUser(req, res) {
+  try {
+    // TODO Delete User
+  } catch (error) {
+    console.log("Cannot delete user: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot delete user",
+    });
+  }
+}
+
 //#endregion
 
 async function writeResetTokenUser(email, token) {
@@ -308,4 +392,6 @@ module.exports = {
   writeResetTokenUser,
   isResetTokenTrue,
   resetPassword,
+  getUsersCount,
+  updateUser,
 };
