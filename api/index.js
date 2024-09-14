@@ -24,7 +24,7 @@ const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
 
 const corsOptions = {
   origin: "*", // React uygulamasının URL'si
-  methods: ["GET", "POST"], // İzin verilen HTTP yöntemleri
+  methods: ["GET", "POST", "PUT", "DELETE"], // İzin verilen HTTP yöntemleri
 };
 const csrfProtection = csrf({ cookie: true });
 
