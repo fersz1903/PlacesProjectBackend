@@ -5,6 +5,8 @@ const {
   registerUser,
   getUsersCount,
   updateUser,
+  deleteUser,
+  updateUserQuota,
 } = require("../database.js");
 
 // "url/admin/<>"
@@ -25,8 +27,16 @@ router.get("/getUsersCount", async (req, res) => {
   return await getUsersCount(req, res);
 });
 
-router.post("/updateUser", async (req, res) => {
+router.put("/updateUser", async (req, res) => {
   return await updateUser(req, res);
+});
+
+router.delete("/deleteUser", async (req, res) => {
+  return await deleteUser(req, res);
+});
+
+router.put("/updateUserQuota", async (req, res) => {
+  return await updateUserQuota(req, res);
 });
 
 module.exports = router;

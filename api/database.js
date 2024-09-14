@@ -157,11 +157,15 @@ async function registerUser(req, res) {
     const { email, firstname, lastname, password, phone, quota } = req.body;
 
     if (!(email && firstname && lastname && password && phone && quota)) {
-      return res.status(400).json({ error: "Missing properties of user!" });
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties of user!" });
     }
 
     if ((await userExist(email)) === true) {
-      return res.status(403).json({ error: "User already exists!" });
+      return res
+        .status(403)
+        .json({ result: false, data: "User already exists!" });
     }
 
     const uuid = createUUId();
@@ -176,7 +180,7 @@ async function registerUser(req, res) {
       password: hashedPassword,
       phone: phone,
       quota: quota,
-      reqistrationDate: Timestamp.now(),
+      registrationDate: Timestamp.now(),
       role: "user",
     });
 
@@ -219,6 +223,7 @@ async function updateUser(req, res) {
     const { uid, email, firstname, lastname, phone, role } = req.body;
 
     if (!(uid && email && firstname && lastname && phone && role)) {
+      console.log(req.body);
       return res
         .status(400)
         .json({ result: false, data: "Missing properties of user!" });
@@ -229,6 +234,13 @@ async function updateUser(req, res) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
+
+      if ((await userExist(email)) === true) {
+        return res
+          .status(403)
+          .json({ result: false, data: "User already exists!" });
+      }
+
       const updateRes = await userRef.update({
         email: email,
         firstname: firstname,
@@ -258,12 +270,68 @@ async function updateUser(req, res) {
 
 async function deleteUser(req, res) {
   try {
-    // TODO Delete User
+    const { uid } = req.body;
+    if (!uid) {
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties of user!" });
+    }
+    const deleteRes = await db.collection("users").doc(uid).delete();
+    if (deleteRes instanceof Error) {
+      console.log(deleteRes);
+      return res
+        .status(500)
+        .send({ result: false, data: "User could not deleted" });
+    }
+
+    return res
+      .status(200)
+      .send({ result: true, data: "User deleted successfuly" });
   } catch (error) {
     console.log("Cannot delete user: ", error);
     return res.status(500).send({
       result: false,
       data: "Server Error, cannot delete user",
+    });
+  }
+}
+
+async function updateUserQuota(req, res) {
+  console.log("updateUserQuota");
+  try {
+    const { uid, quota } = req.body;
+
+    if (!(uid && quota)) {
+      console.log(req.body);
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties of user!" });
+    }
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+    if (snapshot.empty) {
+      console.log("No matching documents.");
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    } else {
+      const updateRes = await userRef.update({
+        quota: quota,
+      });
+
+      if (updateRes instanceof Error) {
+        console.log(updateRes);
+        return res
+          .status(500)
+          .send({ result: false, data: "User quota could not write db" });
+      }
+    }
+    return res
+      .status(200)
+      .send({ result: true, data: "User quota updated successfuly" });
+  } catch (error) {
+    console.log("Cannot update user quota: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot update user quota",
     });
   }
 }
@@ -394,4 +462,6 @@ module.exports = {
   resetPassword,
   getUsersCount,
   updateUser,
+  deleteUser,
+  updateUserQuota,
 };
