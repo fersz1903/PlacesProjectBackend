@@ -8,7 +8,7 @@ function createSignInToken(_userid, _email, _role) {
     { userId: _userid, email: _email, role: _role },
     jwtSecret,
     {
-      expiresIn: "1h",
+      expiresIn: "3d",
     }
   );
   console.log(token);
@@ -64,10 +64,28 @@ function verifyResetToken(token) {
   }
 }
 
+function verifyAdminRole(token, res) {
+  try {
+    const decoded = jwt.verify(token, jwtSecret);
+    if (decoded.role === "admin") {
+      return res
+        .status(200)
+        .json({ result: true, data: "Admin Token Verified" });
+    } else {
+      return res.status(403).json({ result: false, data: "User is Not Admin" });
+    }
+  } catch (error) {
+    return res
+      .status(403)
+      .json({ result: false, data: "User Not Verified as Admin" });
+  }
+}
+
 module.exports = {
   createSignInToken,
   validateToken,
   decodeToken,
   createPasswordResetToken,
   verifyResetToken,
+  verifyAdminRole,
 };

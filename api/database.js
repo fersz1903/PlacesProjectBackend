@@ -234,7 +234,6 @@ async function updateUser(req, res) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
-
       if ((await userExist(email)) === true) {
         return res
           .status(403)
@@ -452,6 +451,99 @@ async function updatePassword(email, newPassword) {
   }
 }
 
+// checks users request quota
+async function checkQuota(req, res) {
+  console.log("getUser");
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    // find user and get properties
+    const userRef = db.collection("users").doc(uid);
+    const doc = await userRef.get();
+    if (!doc.exists) {
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    }
+
+    const quota = doc.data().quota;
+    if (quota > 0) {
+      return res.status(200).send({
+        result: true,
+        data: "User Quota Exist",
+        quota: quota,
+      });
+    }
+    return res.status(403).send({
+      result: false,
+      data: "User Quota Does Not Exist",
+      quota: quota,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .send({ result: false, data: "An error occured checking user quota" });
+  }
+}
+
+async function decraseQuota(req, res) {
+  console.log("decraseUserQuota");
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+    if (snapshot.empty) {
+      console.log("No matching documents.");
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    }
+
+    let quota = snapshot.data().quota;
+
+    if (quota <= 0) {
+      return res.status(403).send({
+        result: false,
+        data: "User Quota Does Not Exist",
+        quota: quota,
+      });
+    }
+    // if quota exist then decrease it
+    --quota;
+    const updateRes = await userRef.update({
+      quota: quota,
+    });
+
+    if (updateRes instanceof Error) {
+      console.log(updateRes);
+      return res
+        .status(500)
+        .send({ result: false, data: "User new quota could not write db" });
+    }
+
+    return res.status(200).send({
+      result: true,
+      data: "User quota decreased successfuly",
+      newQuota: quota,
+    });
+  } catch (error) {
+    console.log("Cannot update user quota: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot decrease user quota",
+    });
+  }
+}
+
 module.exports = {
   getUserToken,
   getUser,
@@ -464,4 +556,6 @@ module.exports = {
   updateUser,
   deleteUser,
   updateUserQuota,
+  checkQuota,
+  decraseQuota,
 };
