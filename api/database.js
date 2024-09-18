@@ -10,6 +10,7 @@ const {
   Filter,
 } = require("firebase-admin/firestore");
 const uuid = require("uuid");
+const Joi = require("joi");
 
 const serviceAccount = require("./serviceAccount.json");
 const { response } = require("express");
@@ -29,6 +30,18 @@ function createUUId() {
   console.log("userid: ", newuuid);
   return newuuid;
 }
+
+const passwordSchema = Joi.object({
+  password: Joi.string()
+    .min(8) // En az 8 karakter uzunluğunda olmalı
+    .pattern(new RegExp("(?=.*[A-Z])")) // En az bir büyük harf içermeli
+    .pattern(new RegExp("(?=.*[a-z])")) // En az bir küçük harf içermeli
+    .messages({
+      "string.min": "Şifre en az {#limit} karakter uzunluğunda olmalıdır.",
+      "string.pattern.base":
+        "Şifre en az bir büyük harf, bir küçük harf içermelidir.",
+    }),
+});
 
 //#region test
 
@@ -544,6 +557,70 @@ async function decraseQuota(req, res) {
   }
 }
 
+async function changePassword(req, res) {
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    const { password, newPassword } = req.body;
+
+    if (!(password && newPassword)) {
+      console.log(req.body);
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties" });
+    }
+
+    const { error } = passwordSchema.validate({ password: newPassword });
+
+    if (error) {
+      // Eğer doğrulama hatası varsa, hata mesajını döneriz
+      return res.status(400).send({
+        result: false,
+        data: error.details[0].message,
+      });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+
+    if (snapshot.empty) {
+      console.log("No matching documents.");
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    }
+
+    // check passwords equal
+    const compareResult = await comparePassword(
+      password,
+      snapshot.data().password
+    );
+
+    if (compareResult != true) {
+      return res
+        .status(401)
+        .send({ result: false, data: "password incorrect" });
+    }
+
+    const hashedPassword = await createHashedPassword(newPassword);
+
+    await userRef.update({ password: hashedPassword });
+
+    return res
+      .status(200)
+      .send({ result: true, data: "Password updated successfully" });
+  } catch (error) {
+    console.log("Change password error: ", error);
+    return res
+      .status(500)
+      .send({ result: false, data: "Password change failed" });
+  }
+}
+
 module.exports = {
   getUserToken,
   getUser,
@@ -558,4 +635,5 @@ module.exports = {
   updateUserQuota,
   checkQuota,
   decraseQuota,
+  changePassword,
 };

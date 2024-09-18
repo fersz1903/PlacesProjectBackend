@@ -9,14 +9,16 @@ router.post("/signin", async (req, res) => {
     const { email, password } = req.body;
 
     if (!(email && password)) {
-      return res.status(400).json({ error: "Email and password required" });
+      return res
+        .status(400)
+        .json({ result: false, data: "Email and password required" });
     }
     //create token
     const response = await getUserToken(email, password, res);
 
     return response;
   } catch (error) {
-    res.status(500).send({ error: "Server Error!" });
+    res.status(500).send({ result: false, data: "Sign In Server Error!" });
   }
 });
 

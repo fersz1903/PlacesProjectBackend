@@ -9,6 +9,8 @@ const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
 const tokenValidate = require("./Middlewares/tokenValidation.js");
 const isAdmin = require("./Middlewares/isAdmin.js");
+const { rateLimit } = require("express-rate-limit");
+const { validateLimiter } = require("./Middlewares/rateLimiter.js");
 
 // ROUTES
 const home = require("./Routes/home.js");
@@ -28,6 +30,16 @@ const corsOptions = {
 };
 const csrfProtection = csrf({ cookie: true });
 
+const loginLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  limit: 11, // Limit each IP to 100 requests per `window` (here, per 15 minutes).
+  standardHeaders: "draft-7", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers.
+  message: "Çok Fazla İstek Yapıldı, Lütfen Daha Sonra Tekrar Deneyin",
+  validate: { xForwardedForHeader: false },
+});
+
+// app.use(limiter);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors(corsOptions));
@@ -40,7 +52,7 @@ app.listen(PORT, () => {
 });
 
 app.use("/home", tokenValidate, home);
-app.use("/login", login);
-app.use("/validate", validate);
+app.use("/login", loginLimiter, login);
+app.use("/validate", validateLimiter, validate);
 app.use("/admin", [tokenValidate, isAdmin], admin);
 app.use("/user", user);
