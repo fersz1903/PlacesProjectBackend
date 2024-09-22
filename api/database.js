@@ -247,10 +247,12 @@ async function updateUser(req, res) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
-      if ((await userExist(email)) === true) {
+      // emailExists ?
+      //console.log(await emailExists(uid, email));
+      if ((await emailExists(uid, email)) === true) {
         return res
           .status(403)
-          .json({ result: false, data: "User already exists!" });
+          .json({ result: false, data: "Email already exists!" });
       }
 
       const updateRes = await userRef.update({
@@ -348,6 +350,22 @@ async function updateUserQuota(req, res) {
   }
 }
 
+async function emailExists(uid, email) {
+  try {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.where("email", "==", email).get();
+
+    const emailExists = snapshot.docs.some((doc) => {
+      // if email using by different uid return true
+      return doc.id != uid;
+    });
+
+    return emailExists;
+  } catch (error) {
+    console.log("Cannot get user: ", error);
+    return error;
+  }
+}
 //#endregion
 
 async function writeResetTokenUser(email, token) {
@@ -636,4 +654,5 @@ module.exports = {
   checkQuota,
   decraseQuota,
   changePassword,
+  emailExists,
 };
