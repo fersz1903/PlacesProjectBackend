@@ -5,6 +5,11 @@ const {
   checkQuota,
   decraseQuota,
   changePassword,
+  saveSearchResultsToDb,
+  fileExists,
+  getSavedSearchResults,
+  getFile,
+  deleteFile,
 } = require("../database.js");
 const { downloadExcel } = require("../excel.js");
 const {
@@ -41,6 +46,26 @@ router.put("/decreaseQuota", async (req, res) => {
 
 router.put("/changePassword", resetPasswordLimiter, async (req, res) => {
   return await changePassword(req, res);
+});
+
+router.post("/saveSearchResults", async (req, res) => {
+  return await saveSearchResultsToDb(req, res);
+});
+
+router.get("/checkFileExists", async (req, res) => {
+  return await fileExists(req, res);
+});
+
+router.get("/getSavedSearchResults", async (req, res) => {
+  return await getSavedSearchResults(req, res);
+});
+
+router.get("/getFile", async (req, res) => {
+  return await getFile(req, res);
+});
+
+router.delete("/deleteFile", async (req, res) => {
+  return await deleteFile(req, res);
 });
 
 module.exports = router;
