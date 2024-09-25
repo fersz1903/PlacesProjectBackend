@@ -104,6 +104,10 @@ async function getUser(req, res) {
           lastname: doc.data().lastname,
           phone: doc.data().phone,
           quota: doc.data().quota,
+          subscriptionEndDate:
+            doc.data().subscriptionEndDate != null
+              ? doc.data().subscriptionEndDate.toDate()
+              : 0,
         },
       });
     }
@@ -149,6 +153,10 @@ async function getUsers(req, res) {
         registrationDate:
           doc.data().registrationDate != null
             ? doc.data().registrationDate.toDate()
+            : 0,
+        subscriptionEndDate:
+          doc.data().subscriptionEndDate != null
+            ? doc.data().subscriptionEndDate.toDate()
             : 0,
       });
     });
@@ -323,7 +331,7 @@ async function updateUserQuota(req, res) {
     }
     const userRef = db.collection("users").doc(uid);
     const snapshot = await userRef.get();
-    if (snapshot.empty) {
+    if (!snapshot.exists) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
@@ -364,6 +372,52 @@ async function emailExists(uid, email) {
   } catch (error) {
     console.log("Cannot get user: ", error);
     return error;
+  }
+}
+
+async function updateUserSubscription(req, res) {
+  console.log("updateUserSubscription");
+  try {
+    const { uid, subscriptionType } = req.body;
+
+    if (!(uid && subscriptionType)) {
+      console.log(req.body);
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties of user!" });
+    }
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+    if (!snapshot.exists) {
+      console.log("No matching documents.");
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    } else {
+      const subsEndDate = new Date();
+      subscriptionType === "yearly"
+        ? subsEndDate.setDate(subsEndDate.getDate() + 365)
+        : subsEndDate.setDate(subsEndDate.getDate() + 30);
+
+      const updateRes = await userRef.update({
+        subscriptionEndDate: subsEndDate,
+      });
+
+      if (updateRes instanceof Error) {
+        console.log(updateRes);
+        return res.status(500).send({
+          result: false,
+          data: "User subscription could not write db",
+        });
+      }
+    }
+    return res
+      .status(200)
+      .send({ result: true, data: "User subscription updated successfuly" });
+  } catch (error) {
+    console.log("Cannot update user subscription: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot update user subscription",
+    });
   }
 }
 //#endregion
@@ -484,7 +538,7 @@ async function updatePassword(email, newPassword) {
 
 // checks users request quota
 async function checkQuota(req, res) {
-  console.log("getUser");
+  console.log("check quota");
   try {
     const token = req.header(TOKEN_HEADER_KEY);
 
@@ -502,6 +556,16 @@ async function checkQuota(req, res) {
     }
 
     const quota = doc.data().quota;
+    const subscriptionEndDate = doc.data().subscriptionEndDate;
+
+    if (!subscriptionEndDate || isDatePassed(subscriptionEndDate.toDate())) {
+      return res.status(402).send({
+        result: false,
+        data: "Subscription not found, payment required",
+        quota: quota,
+      });
+    }
+
     if (quota > 0) {
       return res.status(200).send({
         result: true,
@@ -664,7 +728,7 @@ async function saveSearchResultsToDb(req, res) {
 
     // file save quota
     const filesCount = (await searchRecCol.get()).size;
-    if (filesCount >= 3) {
+    if (filesCount >= 10) {
       return res
         .status(403)
         .send({ result: false, data: "File save quota exceeded" });
@@ -847,6 +911,14 @@ async function deleteFile(req, res) {
   }
 }
 
+function isDatePassed(targetDate) {
+  // if passed return true
+  const today = new Date();
+  const target = new Date(targetDate);
+  console.log("today", today);
+  return today > target;
+}
+
 module.exports = {
   getUserToken,
   getUser,
@@ -868,4 +940,5 @@ module.exports = {
   getSavedSearchResults,
   getFile,
   deleteFile,
+  updateUserSubscription,
 };

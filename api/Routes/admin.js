@@ -7,6 +7,7 @@ const {
   updateUser,
   deleteUser,
   updateUserQuota,
+  updateUserSubscription,
 } = require("../database.js");
 
 // "url/admin/<>"
@@ -37,6 +38,10 @@ router.delete("/deleteUser", async (req, res) => {
 
 router.put("/updateUserQuota", async (req, res) => {
   return await updateUserQuota(req, res);
+});
+
+router.put("/updateUserSubscription", async (req, res) => {
+  return await updateUserSubscription(req, res);
 });
 
 module.exports = router;
