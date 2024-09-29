@@ -10,6 +10,7 @@ const {
   Filter,
 } = require("firebase-admin/firestore");
 const uuid = require("uuid");
+const Joi = require("joi");
 
 const serviceAccount = require("./serviceAccount.json");
 const { response } = require("express");
@@ -29,6 +30,18 @@ function createUUId() {
   console.log("userid: ", newuuid);
   return newuuid;
 }
+
+const passwordSchema = Joi.object({
+  password: Joi.string()
+    .min(8) // En az 8 karakter uzunluğunda olmalı
+    .pattern(new RegExp("(?=.*[A-Z])")) // En az bir büyük harf içermeli
+    .pattern(new RegExp("(?=.*[a-z])")) // En az bir küçük harf içermeli
+    .messages({
+      "string.min": "Şifre en az {#limit} karakter uzunluğunda olmalıdır.",
+      "string.pattern.base":
+        "Şifre en az bir büyük harf, bir küçük harf içermelidir.",
+    }),
+});
 
 //#region test
 
@@ -91,6 +104,10 @@ async function getUser(req, res) {
           lastname: doc.data().lastname,
           phone: doc.data().phone,
           quota: doc.data().quota,
+          subscriptionEndDate:
+            doc.data().subscriptionEndDate != null
+              ? doc.data().subscriptionEndDate.toDate()
+              : 0,
         },
       });
     }
@@ -136,6 +153,10 @@ async function getUsers(req, res) {
         registrationDate:
           doc.data().registrationDate != null
             ? doc.data().registrationDate.toDate()
+            : 0,
+        subscriptionEndDate:
+          doc.data().subscriptionEndDate != null
+            ? doc.data().subscriptionEndDate.toDate()
             : 0,
       });
     });
@@ -234,10 +255,12 @@ async function updateUser(req, res) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
-      if ((await userExist(email)) === true) {
+      // emailExists ?
+      //console.log(await emailExists(uid, email));
+      if ((await emailExists(uid, email)) === true) {
         return res
           .status(403)
-          .json({ result: false, data: "User already exists!" });
+          .json({ result: false, data: "Email already exists!" });
       }
 
       const updateRes = await userRef.update({
@@ -308,7 +331,7 @@ async function updateUserQuota(req, res) {
     }
     const userRef = db.collection("users").doc(uid);
     const snapshot = await userRef.get();
-    if (snapshot.empty) {
+    if (!snapshot.exists) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
@@ -335,6 +358,68 @@ async function updateUserQuota(req, res) {
   }
 }
 
+async function emailExists(uid, email) {
+  try {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.where("email", "==", email).get();
+
+    const emailExists = snapshot.docs.some((doc) => {
+      // if email using by different uid return true
+      return doc.id != uid;
+    });
+
+    return emailExists;
+  } catch (error) {
+    console.log("Cannot get user: ", error);
+    return error;
+  }
+}
+
+async function updateUserSubscription(req, res) {
+  console.log("updateUserSubscription");
+  try {
+    const { uid, subscriptionType } = req.body;
+
+    if (!(uid && subscriptionType)) {
+      console.log(req.body);
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties of user!" });
+    }
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+    if (!snapshot.exists) {
+      console.log("No matching documents.");
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    } else {
+      const subsEndDate = new Date();
+      subscriptionType === "yearly"
+        ? subsEndDate.setDate(subsEndDate.getDate() + 365)
+        : subsEndDate.setDate(subsEndDate.getDate() + 30);
+
+      const updateRes = await userRef.update({
+        subscriptionEndDate: subsEndDate,
+      });
+
+      if (updateRes instanceof Error) {
+        console.log(updateRes);
+        return res.status(500).send({
+          result: false,
+          data: "User subscription could not write db",
+        });
+      }
+    }
+    return res
+      .status(200)
+      .send({ result: true, data: "User subscription updated successfuly" });
+  } catch (error) {
+    console.log("Cannot update user subscription: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot update user subscription",
+    });
+  }
+}
 //#endregion
 
 async function writeResetTokenUser(email, token) {
@@ -453,7 +538,7 @@ async function updatePassword(email, newPassword) {
 
 // checks users request quota
 async function checkQuota(req, res) {
-  console.log("getUser");
+  console.log("check quota");
   try {
     const token = req.header(TOKEN_HEADER_KEY);
 
@@ -471,6 +556,16 @@ async function checkQuota(req, res) {
     }
 
     const quota = doc.data().quota;
+    const subscriptionEndDate = doc.data().subscriptionEndDate;
+
+    if (!subscriptionEndDate || isDatePassed(subscriptionEndDate.toDate())) {
+      return res.status(402).send({
+        result: false,
+        data: "Subscription not found, payment required",
+        quota: quota,
+      });
+    }
+
     if (quota > 0) {
       return res.status(200).send({
         result: true,
@@ -544,6 +639,290 @@ async function decraseQuota(req, res) {
   }
 }
 
+async function changePassword(req, res) {
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    const { password, newPassword } = req.body;
+
+    if (!(password && newPassword)) {
+      console.log(req.body);
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties" });
+    }
+
+    const { error } = passwordSchema.validate({ password: newPassword });
+
+    if (error) {
+      // Eğer doğrulama hatası varsa, hata mesajını döneriz
+      return res.status(400).send({
+        result: false,
+        data: error.details[0].message,
+      });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+
+    if (snapshot.empty) {
+      console.log("No matching documents.");
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    }
+
+    // check passwords equal
+    const compareResult = await comparePassword(
+      password,
+      snapshot.data().password
+    );
+
+    if (compareResult != true) {
+      return res
+        .status(401)
+        .send({ result: false, data: "password incorrect" });
+    }
+
+    const hashedPassword = await createHashedPassword(newPassword);
+
+    await userRef.update({ password: hashedPassword });
+
+    return res
+      .status(200)
+      .send({ result: true, data: "Password updated successfully" });
+  } catch (error) {
+    console.log("Change password error: ", error);
+    return res
+      .status(500)
+      .send({ result: false, data: "Password change failed" });
+  }
+}
+
+async function saveSearchResultsToDb(req, res) {
+  try {
+    const { data, name, address } = req.body;
+
+    if (!(data && name && address)) {
+      return res
+        .status(400)
+        .json({ result: false, error: "Missing properties" });
+    }
+
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    const searchRecCol = db
+      .collection("users")
+      .doc(uid)
+      .collection("searchRecords");
+
+    // file save quota
+    const filesCount = (await searchRecCol.get()).size;
+    if (filesCount >= 10) {
+      return res
+        .status(403)
+        .send({ result: false, data: "File save quota exceeded" });
+    }
+
+    const searchDocRef = searchRecCol.doc(name.toString());
+
+    // const rows = data.map((row) => ({
+    //   address: row.formattedAddress,
+    //   displayName: row.displayName.text,
+    //   pricelevel: row.priceLevel !== undefined ? row.priceLevel : null, // undefined ise null yap
+    // }));
+
+    // console.log(rows);
+    await searchDocRef.set({ data, address: address });
+
+    return res
+      .status(200)
+      .send({ result: true, data: "File saved successfuly" });
+  } catch (error) {
+    console.log("error save search result", error);
+    res.status(500).send({ result: false, data: "Error while saving file" });
+  }
+}
+
+async function fileExists(req, res) {
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+    const { name } = req.params;
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+    if (!name) {
+      return res
+        .status(400)
+        .json({ result: false, error: "Missing properties" });
+    }
+
+    const uid = decodeToken(token).userId;
+    const fileRef = db
+      .collection("users")
+      .doc(uid)
+      .collection("searchRecords")
+      .doc(name);
+
+    const snapshot = await fileRef.get();
+    console.log(snapshot);
+    if (!snapshot.exists) {
+      return res
+        .status(200)
+        .send({ result: false, data: "File Does Not Exist" });
+    }
+    return res.status(200).send({ result: true, data: "File Exists" });
+  } catch (error) {
+    res.status(500).send({ result: false, data: "Error while checking file" });
+  }
+}
+
+async function getSavedSearchResults(req, res) {
+  console.log("getSavedSearchResults");
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    console.log(uid);
+    const filesRef = db
+      .collection("users")
+      .doc(uid)
+      .collection("searchRecords");
+
+    const snapshot = await filesRef.get();
+
+    if (snapshot.empty) {
+      return res.status(404).send({ result: false, data: "Files Not Found" });
+    }
+    const filesArray = [];
+    const filesCount = snapshot.size;
+
+    snapshot.forEach((doc) => {
+      filesArray.push({
+        file: doc.id,
+        address: doc.data().address ? doc.data().address : null,
+      });
+    });
+    return res.status(200).send({
+      result: true,
+      files: filesArray,
+      filesCount: filesCount,
+    });
+  } catch (error) {
+    console.log(error);
+    return res
+      .status(500)
+      .send({ result: false, data: "An error occured while getting files" });
+  }
+}
+
+async function getFile(req, res) {
+  console.log("getFile");
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+    const { name } = req.params;
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    if (!name) {
+      return res
+        .status(400)
+        .json({ result: false, error: "Missing properties" });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    const fileRef = db
+      .collection("users")
+      .doc(uid)
+      .collection("searchRecords")
+      .doc(name);
+
+    const snapshot = await fileRef.get();
+
+    if (!snapshot.exists) {
+      return res.status(404).send({ result: false, data: "File Not Found" });
+    }
+
+    return res.status(200).send({
+      result: true,
+      address: snapshot.data().address,
+      data: snapshot.data().data,
+    });
+  } catch (error) {
+    console.log(error);
+    return res
+      .status(500)
+      .send({ result: false, data: "An error occured while getting file" });
+  }
+}
+
+async function deleteFile(req, res) {
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+    const { name } = req.body;
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    if (!name) {
+      return res
+        .status(400)
+        .json({ result: false, error: "Missing properties" });
+    }
+    const uid = decodeToken(token).userId;
+
+    const deleteRes = await db
+      .collection("users")
+      .doc(uid)
+      .collection("searchRecords")
+      .doc(name)
+      .delete();
+
+    if (deleteRes instanceof Error) {
+      console.log(deleteRes);
+      return res
+        .status(500)
+        .send({ result: false, data: "File could not deleted" });
+    }
+    return res
+      .status(200)
+      .send({ result: true, data: "File deleted successfuly" });
+  } catch (error) {
+    console.log("Cannot delete file: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot delete file",
+    });
+  }
+}
+
+function isDatePassed(targetDate) {
+  // if passed return true
+  const today = new Date();
+  const target = new Date(targetDate);
+  console.log("today", today);
+  return today > target;
+}
+
 module.exports = {
   getUserToken,
   getUser,
@@ -558,4 +937,12 @@ module.exports = {
   updateUserQuota,
   checkQuota,
   decraseQuota,
+  changePassword,
+  emailExists,
+  saveSearchResultsToDb,
+  fileExists,
+  getSavedSearchResults,
+  getFile,
+  deleteFile,
+  updateUserSubscription,
 };

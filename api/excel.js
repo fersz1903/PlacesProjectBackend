@@ -14,20 +14,25 @@ function downloadExcel(req, res) {
     const workbook = xlsx.utils.book_new();
 
     const rows = jsonData.map((row) => ({
-      address: row.formattedAddress,
-      displayName: row.displayName.text,
-      pricelevel: row.priceLevel,
+      displayName: row.displayName.text ? row.displayName.text: null,
+      address: row.formattedAddress ? row.formattedAddress: null,
+      website: row.websiteUri ? row.websiteUri: null,
+      phone: row.internationalPhoneNumber ? row.internationalPhoneNumber : null,
     }));
 
     // const worksheet = xlsx.utils.json_to_sheet(jsonData);
     const worksheet = xlsx.utils.json_to_sheet(rows);
     xlsx.utils.book_append_sheet(workbook, worksheet, "Places");
 
-    xlsx.utils.sheet_add_aoa(worksheet, [["Adres", "İsim", "Price Level"]], {
-      origin: "A1",
-    });
+    xlsx.utils.sheet_add_aoa(
+      worksheet,
+      [["Yer İsmi", "Adres", "Web Sitesi", "Telefon"]],
+      {
+        origin: "A1",
+      }
+    );
     //const max_width = rows.reduce((w, r) => Math.max(w, r.address.length), 10);
-    worksheet["!cols"] = [{ wch: 50 }, { wch: 30 }, { wch: 30 }];
+    worksheet["!cols"] = [{ wch: 50 }, { wch: 50 }, { wch: 30 }, { wch: 20 }];
 
     // Excel dosyasını kaydetme
     const excelFilePath = path.join(__dirname, "output.xlsx");
