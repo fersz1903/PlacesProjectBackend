@@ -705,9 +705,9 @@ async function changePassword(req, res) {
 
 async function saveSearchResultsToDb(req, res) {
   try {
-    const { data, name } = req.body;
+    const { data, name, address } = req.body;
 
-    if (!(data && name)) {
+    if (!(data && name && address)) {
       return res
         .status(400)
         .json({ result: false, error: "Missing properties" });
@@ -736,14 +736,14 @@ async function saveSearchResultsToDb(req, res) {
 
     const searchDocRef = searchRecCol.doc(name.toString());
 
-    const rows = data.map((row) => ({
-      address: row.formattedAddress,
-      displayName: row.displayName.text,
-      pricelevel: row.priceLevel !== undefined ? row.priceLevel : null, // undefined ise null yap
-    }));
+    // const rows = data.map((row) => ({
+    //   address: row.formattedAddress,
+    //   displayName: row.displayName.text,
+    //   pricelevel: row.priceLevel !== undefined ? row.priceLevel : null, // undefined ise null yap
+    // }));
 
-    console.log(rows);
-    await searchDocRef.set({ data });
+    // console.log(rows);
+    await searchDocRef.set({ data, address: address });
 
     return res
       .status(200)
@@ -757,8 +757,7 @@ async function saveSearchResultsToDb(req, res) {
 async function fileExists(req, res) {
   try {
     const token = req.header(TOKEN_HEADER_KEY);
-    const { name } = req.body;
-
+    const { name } = req.params;
     if (!token) {
       return res.status(404).send({ result: false, data: "Token Not Found" });
     }
@@ -816,6 +815,7 @@ async function getSavedSearchResults(req, res) {
     snapshot.forEach((doc) => {
       filesArray.push({
         file: doc.id,
+        address: doc.data().address ? doc.data().address : null,
       });
     });
     return res.status(200).send({
@@ -835,7 +835,7 @@ async function getFile(req, res) {
   console.log("getFile");
   try {
     const token = req.header(TOKEN_HEADER_KEY);
-    const { name } = req.body;
+    const { name } = req.params;
 
     if (!token) {
       return res.status(404).send({ result: false, data: "Token Not Found" });
@@ -861,7 +861,11 @@ async function getFile(req, res) {
       return res.status(404).send({ result: false, data: "File Not Found" });
     }
 
-    return res.status(200).send({ result: true, data: snapshot.data().data });
+    return res.status(200).send({
+      result: true,
+      address: snapshot.data().address,
+      data: snapshot.data().data,
+    });
   } catch (error) {
     console.log(error);
     return res

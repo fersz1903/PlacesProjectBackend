@@ -52,7 +52,7 @@ router.post("/saveSearchResults", async (req, res) => {
   return await saveSearchResultsToDb(req, res);
 });
 
-router.get("/checkFileExists", async (req, res) => {
+router.get("/checkFileExists/:name", async (req, res) => {
   return await fileExists(req, res);
 });
 
@@ -60,7 +60,7 @@ router.get("/getSavedSearchResults", async (req, res) => {
   return await getSavedSearchResults(req, res);
 });
 
-router.get("/getFile", async (req, res) => {
+router.get("/getFile/:name", async (req, res) => {
   return await getFile(req, res);
 });
 
