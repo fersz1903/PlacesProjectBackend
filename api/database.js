@@ -775,7 +775,7 @@ async function fileExists(req, res) {
       .doc(name);
 
     const snapshot = await fileRef.get();
-    console.log(snapshot);
+
     if (!snapshot.exists) {
       return res
         .status(200)
@@ -798,7 +798,6 @@ async function getSavedSearchResults(req, res) {
 
     const uid = decodeToken(token).userId;
 
-    console.log(uid);
     const filesRef = db
       .collection("users")
       .doc(uid)

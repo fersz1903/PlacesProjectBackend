@@ -4,3 +4,5 @@ api/.env
 api/serviceAccount.json
 api/token.json
 api/credentials.json
+api/logs/
+api/Dockerfile
