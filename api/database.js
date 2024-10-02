@@ -16,6 +16,7 @@ const serviceAccount = require("./serviceAccount.json");
 const { response } = require("express");
 const { createSignInToken, decodeToken, verifyResetToken } = require("./jwt");
 const { createHashedPassword, comparePassword } = require("./password.js");
+const { setTokenRedis } = require("./cache");
 require("dotenv").config();
 const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
 
@@ -64,6 +65,7 @@ async function getUserToken(email, password, res) {
           doc.data().email,
           doc.data().role
         );
+        await setTokenRedis(token, email);
         return res.status(200).send({ result: true, data: token });
       } else {
         return res
@@ -576,6 +578,7 @@ async function checkQuota(req, res) {
     return res.status(403).send({
       result: false,
       data: "User Quota Does Not Exist",
+      err: "ERR_QUOTA",
       quota: quota,
     });
   } catch (error) {

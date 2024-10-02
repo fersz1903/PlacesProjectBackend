@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const { getTokenFromRedis } = require("./cache");
 require("dotenv").config();
 const jwtSecret = process.env.JWTSECRET;
 const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
@@ -11,7 +12,7 @@ function createSignInToken(_userid, _email, _role) {
       expiresIn: "3d",
     }
   );
-  console.log(token);
+  // console.log(token);
   return token;
 }
 
@@ -33,8 +34,27 @@ function validateToken(token, res) {
   //   // Access Denied
   //   return res.status(401).send(false);
   // }
-  jwt.verify(token, jwtSecret, (err) => {
+  jwt.verify(token, jwtSecret, async (err) => {
     if (err) {
+      return res
+        .status(403)
+        .json({ result: false, data: "Failed to authenticate token" });
+    }
+    try {
+      const tokenFromRedis = await getTokenFromRedis(jwt.decode(token).email);
+
+      if (tokenFromRedis == null) {
+        return res
+          .status(403)
+          .json({ result: false, data: "Failed to read token from redis" });
+      }
+      if (tokenFromRedis != token) {
+        return res
+          .status(403)
+          .json({ result: false, data: "Logged in from another device" });
+      }
+    } catch (error) {
+      console.log("redis jwt error: ", error);
       return res
         .status(403)
         .json({ result: false, data: "Failed to authenticate token" });
@@ -45,6 +65,15 @@ function validateToken(token, res) {
 
 function decodeToken(token) {
   return jwt.decode(token);
+}
+
+function validateLogToken(token) {
+  jwt.verify(token, jwtSecret, (err) => {
+    if (err) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function createPasswordResetToken(_email) {
@@ -88,4 +117,5 @@ module.exports = {
   createPasswordResetToken,
   verifyResetToken,
   verifyAdminRole,
+  validateLogToken,
 };

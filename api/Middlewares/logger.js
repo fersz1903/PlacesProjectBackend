@@ -1,5 +1,5 @@
 const winston = require("winston");
-const { decodeToken } = require("../jwt");
+const { decodeToken, validateLogToken } = require("../jwt");
 require("winston-daily-rotate-file");
 
 const dailyRotateTransport = new winston.transports.DailyRotateFile({
@@ -32,7 +32,7 @@ function writeInfoLog(req, res, next) {
     const ip = req.headers["x-forwarded-for"] || req.ip;
     const token = req.header("Authorization");
 
-    if (!token || token == null || token == "null") {
+    if (validateLogToken(token) != true) {
       res.on("finish", () => {
         logger.info(
           `Request: ${req.method} - ${req.url} - Guest - IP: ${ip} - Response Code: ${res.statusCode}`
