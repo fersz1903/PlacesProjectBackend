@@ -68,7 +68,7 @@ function decodeToken(token) {
 }
 
 function validateLogToken(token) {
-  jwt.verify(token, jwtSecret, (err) => {
+  return jwt.verify(token, jwtSecret, (err) => {
     if (err) {
       return false;
     }
