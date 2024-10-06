@@ -14,10 +14,11 @@ function downloadExcel(req, res) {
     const workbook = xlsx.utils.book_new();
 
     const rows = jsonData.map((row) => ({
-      displayName: row.displayName.text ? row.displayName.text: null,
-      address: row.formattedAddress ? row.formattedAddress: null,
-      website: row.websiteUri ? row.websiteUri: null,
+      displayName: row.displayName.text ? row.displayName.text : null,
+      address: row.formattedAddress ? row.formattedAddress : null,
+      website: row.websiteUri ? row.websiteUri : null,
       phone: row.internationalPhoneNumber ? row.internationalPhoneNumber : null,
+      emails: row.emails ? row.emails : null,
     }));
 
     // const worksheet = xlsx.utils.json_to_sheet(jsonData);
@@ -26,13 +27,13 @@ function downloadExcel(req, res) {
 
     xlsx.utils.sheet_add_aoa(
       worksheet,
-      [["Yer İsmi", "Adres", "Web Sitesi", "Telefon"]],
+      [["Yer İsmi", "Adres", "Web Sitesi", "Telefon", "E-Posta"]],
       {
         origin: "A1",
       }
     );
     //const max_width = rows.reduce((w, r) => Math.max(w, r.address.length), 10);
-    worksheet["!cols"] = [{ wch: 50 }, { wch: 50 }, { wch: 30 }, { wch: 20 }];
+    worksheet["!cols"] = [{ wch: 50 }, { wch: 70 }, { wch: 30 }, { wch: 20 },{ wch: 50 }];
 
     // Excel dosyasını kaydetme
     const excelFilePath = path.join(__dirname, "output.xlsx");

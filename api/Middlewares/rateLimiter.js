@@ -28,8 +28,8 @@ const getUserLimiter = rateLimit({
 });
 
 const downloadLimiter = rateLimit({
-  windowMs: 1 * 30 * 1000, // 30 sec
-  limit: 1,
+  windowMs: 1 * 10 * 1000, // 10 sec
+  limit: 2,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: "Çok Fazla İstek Yapıldı, Lütfen Daha Sonra Tekrar Deneyin",
@@ -65,7 +65,16 @@ const sendMailLimiter = rateLimit({
 
 const validateLimiter = rateLimit({
   windowMs: 1 * 10 * 1000, // 10 sec
-  limit: 15,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: "Çok Fazla İstek Yapıldı, Lütfen Daha Sonra Tekrar Deneyin",
+  validate: { xForwardedForHeader: false },
+});
+
+const checkQuotaLimiter = rateLimit({
+  windowMs: 1 * 10 * 1000, // 10 sec
+  limit: 3,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: "Çok Fazla İstek Yapıldı, Lütfen Daha Sonra Tekrar Deneyin",
@@ -81,4 +90,5 @@ module.exports = {
   resetPasswordLimiter,
   sendMailLimiter,
   validateLimiter,
+  checkQuotaLimiter,
 };
