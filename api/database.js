@@ -35,13 +35,15 @@ function createUUId() {
 const passwordSchema = Joi.object({
   password: Joi.string()
     .min(8) // En az 8 karakter uzunluğunda olmalı
-    .pattern(new RegExp("(?=.*[A-Z])")) // En az bir büyük harf içermeli
-    .pattern(new RegExp("(?=.*[a-z])")) // En az bir küçük harf içermeli
     .messages({
       "string.min": "Şifre en az {#limit} karakter uzunluğunda olmalıdır.",
       "string.pattern.base":
-        "Şifre en az bir büyük harf, bir küçük harf içermelidir.",
-    }),
+        "Şifre en az bir büyük harf ve bir küçük harf içermelidir.",
+    })
+    .pattern(new RegExp("(?=.*[A-Z])")) // En az bir büyük harf içermeli
+    .pattern(new RegExp("(?=.*[a-z])")) // En az bir küçük harf içermeli
+    .pattern(new RegExp("(?=.*\\d)")) // En az bir rakam içermeli
+    .rule({ message: "Şifre en az bir rakam içermelidir." }),
 });
 
 //#region test
@@ -98,6 +100,10 @@ async function getUser(req, res) {
     if (!doc.exists) {
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
+      // TODO gruplanan userlara quota ref fieldi ekle, if quotaRef exist ise sharedData da işlem yap
+      // quotaRef = doc.data().quota;
+      // quotaDoc = await quotaRef.get();
+      // console.log(quotaDoc.data().quota);
       return res.status(200).send({
         result: true,
         data: {
@@ -114,6 +120,7 @@ async function getUser(req, res) {
       });
     }
   } catch (error) {
+    console.log(error);
     return res
       .status(500)
       .send({ result: false, data: "An error occured getting user infos" });
@@ -482,6 +489,16 @@ async function resetPassword(req, res) {
       return res
         .status(400)
         .json({ result: false, data: "newPassword required" });
+    }
+
+    const { error } = passwordSchema.validate({ password: newPassword });
+
+    if (error) {
+      // Eğer doğrulama hatası varsa, hata mesajını dön
+      return res.status(403).send({
+        result: false,
+        data: error.details[0].message,
+      });
     }
 
     // verify token
