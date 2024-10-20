@@ -6,7 +6,7 @@ const { handleData, handleScrap } = require("./scrapping");
 const scrapingQueue = new Queue("scraping", {
   connection: redisClient,
   limiter: {
-    max: 10, 
+    max: 10,
     duration: 1000,
   },
 });
@@ -16,7 +16,7 @@ const worker = new Worker(
   "scraping",
   async (job) => {
     const { data } = job.data;
-    console.log("Scraping job started", data);
+    console.log("Scraping job started: ", job.id);
 
     // İsteği işleyin ve sonuçları döndürün
     const result = await handleScrap(data);
@@ -32,7 +32,7 @@ const worker = new Worker(
 
 // İş başarıyla tamamlandığında bu olay tetiklenir.
 worker.on("completed", (job, result) => {
-  console.log(`Job ${job.id} completed:`, result);
+  console.log(`Job ${job.id} completed:`);
 });
 
 // İş başarısız olduğunda bu olay tetiklenir.

@@ -83,21 +83,24 @@ router.post("/getEmails", async (req, res) => {
     }
 
     if ((await scrapingQueue.count()) > 15) {
-      res.status(403).json({ result: false, data: "reached max queue size" });
+      return res
+        .status(403)
+        .json({ result: false, data: "reached max queue size" });
     } else {
       const job = await scrapingQueue.add("scrape-job", {
         data: req.body.data,
       });
-      res.json({ jobId: job.id, status: "pending" });
+      return res.json({ jobId: job.id, status: "pending" });
     }
   } catch (error) {
-    res
+    return res
       .status(500)
       .json({ message: "Error adding job to queue", error: error.message });
   }
 });
 
 router.get("/getScrapStatus/:jobId", async (req, res) => {
+
   const jobId = req.params.jobId;
 
   try {
@@ -118,9 +121,9 @@ router.get("/getScrapStatus/:jobId", async (req, res) => {
       progress: job.progress,
     };
 
-    res.json(jobStatus);
+    return res.json(jobStatus);
   } catch (error) {
-    res
+    return res
       .status(500)
       .json({ message: "Error fetching job status", error: error.message });
   }
