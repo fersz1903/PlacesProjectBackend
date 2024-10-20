@@ -1,12 +1,13 @@
-const redis = require("redis");
+const redis = require("ioredis");
 
-const redisClient = redis.createClient({
-  // host: "redis",
-  // port: 6379,
-  url: "redis://redis:6379",
+const redisClient = new redis({
+  host: "redis",
+  port: 6379,
+  //url: "redis://redis:6379",
+  maxRetriesPerRequest: null,
 });
 
-redisClient.connect();
+//redisClient.connect();
 
 redisClient.on("connect", () => {
   console.log("Redis connected");
