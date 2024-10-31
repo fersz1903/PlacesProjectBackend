@@ -10,6 +10,8 @@ const {
   getSavedSearchResults,
   getFile,
   deleteFile,
+  increaseQuota,
+  checkUserSaveFileLimit,
 } = require("../database.js");
 const { downloadExcel } = require("../excel.js");
 const {
@@ -37,13 +39,16 @@ router.post("/downloadExcel", downloadLimiter, (req, res) => {
 });
 
 // check quota if q>0 return yes
-router.get("/checkQuota", checkQuotaLimiter, async (req, res) => {
-  //  TODO add quota limiter
+router.get("/checkQuota/:count", checkQuotaLimiter, async (req, res) => {
   return await checkQuota(req, res);
 });
 
 router.put("/decreaseQuota", async (req, res) => {
   return await decraseQuota(req, res);
+});
+
+router.put("/increaseQuota", async (req, res) => {
+  return await increaseQuota(req, res);
 });
 
 router.put("/changePassword", resetPasswordLimiter, async (req, res) => {
@@ -100,7 +105,6 @@ router.post("/getEmails", async (req, res) => {
 });
 
 router.get("/getScrapStatus/:jobId", async (req, res) => {
-
   const jobId = req.params.jobId;
 
   try {

@@ -19,6 +19,8 @@ function downloadExcel(req, res) {
       website: row.websiteUri ? row.websiteUri : null,
       phone: row.internationalPhoneNumber ? row.internationalPhoneNumber : null,
       emails: row.emails ? row.emails : null,
+      rating: row.rating ? row.rating : null,
+      mapsUri: row.googleMapsUri ? row.googleMapsUri : null,
     }));
 
     // const worksheet = xlsx.utils.json_to_sheet(jsonData);
@@ -27,13 +29,13 @@ function downloadExcel(req, res) {
 
     xlsx.utils.sheet_add_aoa(
       worksheet,
-      [["Yer İsmi", "Adres", "Web Sitesi", "Telefon", "E-Posta"]],
+      [["Yer İsmi", "Adres", "Web Sitesi", "Telefon", "E-Posta","İşletme Puanı","Google Maps Linki"]],
       {
         origin: "A1",
       }
     );
     //const max_width = rows.reduce((w, r) => Math.max(w, r.address.length), 10);
-    worksheet["!cols"] = [{ wch: 50 }, { wch: 70 }, { wch: 30 }, { wch: 20 },{ wch: 50 }];
+    worksheet["!cols"] = [{ wch: 50 }, { wch: 70 }, { wch: 30 }, { wch: 18 },{ wch: 40 },{ wch: 12 },{ wch: 40 }];
 
     // Excel dosyasını kaydetme
     const excelFilePath = path.join(__dirname, "output.xlsx");

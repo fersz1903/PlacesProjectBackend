@@ -184,9 +184,9 @@ async function getUsers(req, res) {
 
 async function registerUser(req, res) {
   try {
-    const { email, firstname, lastname, password, phone, quota } = req.body;
+    const { email, firstname, lastname, password, phone } = req.body;
 
-    if (!(email && firstname && lastname && password && phone && quota)) {
+    if (!(email && firstname && lastname && password && phone)) {
       return res
         .status(400)
         .json({ result: false, data: "Missing properties of user!" });
@@ -209,7 +209,6 @@ async function registerUser(req, res) {
       lastname: lastname,
       password: hashedPassword,
       phone: phone,
-      quota: quota,
       registrationDate: Timestamp.now(),
       role: "user",
     });
@@ -260,7 +259,8 @@ async function updateUser(req, res) {
     }
     const userRef = db.collection("users").doc(uid);
     const snapshot = await userRef.get();
-    if (snapshot.empty) {
+
+    if (!snapshot.exists) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
@@ -389,35 +389,50 @@ async function updateUserSubscription(req, res) {
   try {
     const { uid, subscriptionType } = req.body;
 
-    if (!(uid && subscriptionType)) {
+    if (
+      !(uid && subscriptionType) &&
+      !["Lite", "Standart", "Premium"].includes(subscriptionType)
+    ) {
       console.log(req.body);
       return res
         .status(400)
-        .json({ result: false, data: "Missing properties of user!" });
+        .json({ result: false, data: "Missing or wrong properties of user!" });
     }
     const userRef = db.collection("users").doc(uid);
     const snapshot = await userRef.get();
     if (!snapshot.exists) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
-    } else {
-      const subsEndDate = new Date();
-      subscriptionType === "yearly"
-        ? subsEndDate.setDate(subsEndDate.getDate() + 365)
-        : subsEndDate.setDate(subsEndDate.getDate() + 30);
-
-      const updateRes = await userRef.update({
-        subscriptionEndDate: subsEndDate,
-      });
-
-      if (updateRes instanceof Error) {
-        console.log(updateRes);
-        return res.status(500).send({
-          result: false,
-          data: "User subscription could not write db",
-        });
-      }
     }
+
+    const subRef = db.collection("subscriptionPlans").doc(subscriptionType);
+    const subDoc = await subRef.get();
+
+    const subsEndDate = new Date();
+    subsEndDate.setDate(subsEndDate.getDate() + 30);
+
+    const premiumRef = db.collection("subscriptionPlans").doc("Premium");
+    const updateRes = await userRef.update({
+      subscriptionEndDate: subsEndDate,
+      subscriptionPlan: subRef,
+      quota:
+        subscriptionType === "Premium"
+          ? snapshot.data().subscriptionPlan
+            ? snapshot.data().subscriptionPlan.isEqual(premiumRef)
+              ? FieldValue.increment(subDoc.data().quota)
+              : subDoc.data().quota
+            : subDoc.data().quota
+          : subDoc.data().quota,
+    });
+
+    if (updateRes instanceof Error) {
+      console.log(updateRes);
+      return res.status(500).send({
+        result: false,
+        data: "User subscription could not write db",
+      });
+    }
+
     return res
       .status(200)
       .send({ result: true, data: "User subscription updated successfuly" });
@@ -555,15 +570,19 @@ async function updatePassword(email, newPassword) {
   }
 }
 
-// checks users request quota
+// checks users request quota // TODO check quota more than 1
 async function checkQuota(req, res) {
   console.log("check quota");
   try {
     const token = req.header(TOKEN_HEADER_KEY);
 
+    const { count } = req.params;
+
     if (!token) {
       return res.status(404).send({ result: false, data: "Token Not Found" });
     }
+
+    const checkCount = count ? count : 1;
 
     const uid = decodeToken(token).userId;
 
@@ -585,7 +604,7 @@ async function checkQuota(req, res) {
       });
     }
 
-    if (quota > 0) {
+    if (quota >= checkCount) {
       return res.status(200).send({
         result: true,
         data: "User Quota Exist",
@@ -618,7 +637,7 @@ async function decraseQuota(req, res) {
 
     const userRef = db.collection("users").doc(uid);
     const snapshot = await userRef.get();
-    if (snapshot.empty) {
+    if (!snapshot.exists) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     }
@@ -659,6 +678,62 @@ async function decraseQuota(req, res) {
   }
 }
 
+async function increaseQuota(req, res) {
+  console.log("increaseQuota");
+  try {
+    const token = req.header(TOKEN_HEADER_KEY);
+
+    if (!token) {
+      return res.status(404).send({ result: false, data: "Token Not Found" });
+    }
+
+    const { increment } = req.body;
+
+    if (!increment && increment != 0) {
+      console.log("buraya girdi", req.body);
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties" });
+    }
+
+    const uid = decodeToken(token).userId;
+
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+    if (!snapshot.exists) {
+      console.log("No matching documents.");
+      return res.status(404).send({ result: false, data: "User Not Found" });
+    }
+
+    let quota = snapshot.data().quota;
+
+    // if quota exist then decrease it
+    quota += increment;
+    const updateRes = await userRef.update({
+      quota: quota,
+    });
+
+    if (updateRes instanceof Error) {
+      console.log(updateRes);
+      return res
+        .status(500)
+        .send({ result: false, data: "User new quota could not write db" });
+    }
+
+    return res.status(200).send({
+      result: true,
+      data: "User quota increased successfuly",
+      newQuota: quota,
+    });
+  } catch (error) {
+    console.log("Cannot update user quota: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot increase user quota",
+    });
+  }
+}
+
 async function changePassword(req, res) {
   try {
     const token = req.header(TOKEN_HEADER_KEY);
@@ -691,7 +766,7 @@ async function changePassword(req, res) {
     const userRef = db.collection("users").doc(uid);
     const snapshot = await userRef.get();
 
-    if (snapshot.empty) {
+    if (!snapshot.exists) {
       console.log("No matching documents.");
       return res.status(404).send({ result: false, data: "User Not Found" });
     }
@@ -747,14 +822,15 @@ async function saveSearchResultsToDb(req, res) {
       .collection("searchRecords");
 
     // file save quota
-    const filesCount = (await searchRecCol.get()).size;
-    if (filesCount >= 10) {
+    const checkRes = await checkUserSaveFileLimit(uid, searchRecCol);
+
+    if (!checkRes) {
       return res
         .status(403)
         .send({ result: false, data: "File save quota exceeded" });
     }
 
-    const searchDocRef = searchRecCol.doc(name.toString());
+    const searchDocRef = searchRecCol.doc(name.toString().trim());
 
     // const rows = data.map((row) => ({
     //   address: row.formattedAddress,
@@ -792,7 +868,7 @@ async function fileExists(req, res) {
       .collection("users")
       .doc(uid)
       .collection("searchRecords")
-      .doc(name);
+      .doc(name.trim());
 
     const snapshot = await fileRef.get();
 
@@ -942,6 +1018,38 @@ function isDatePassed(targetDate) {
   return today > target;
 }
 
+async function checkUserSaveFileLimit(uid, searchRecCol) {
+  console.log("getUser");
+  try {
+    // find user and get properties
+    const userRef = db.collection("users").doc(uid);
+    const doc = await userRef.get();
+    if (!doc.exists) {
+      return false;
+    }
+
+    const snapshot = await searchRecCol.get();
+
+    if (snapshot.empty) {
+      return true;
+    }
+
+    const filesCount = snapshot.size;
+
+    const planRef = doc.data().subscriptionPlan;
+    const planDoc = await planRef.get();
+
+    if (planDoc.exists) {
+      return filesCount < planDoc.data().fileSaveLimit ? true : false; // true ise kayıt edilebilir -- limitin altında
+    }
+    return false;
+  } catch (error) {
+    //console.log(error);
+    throw error;
+    //return false;
+  }
+}
+
 module.exports = {
   getUserToken,
   getUser,
@@ -964,4 +1072,5 @@ module.exports = {
   getFile,
   deleteFile,
   updateUserSubscription,
+  increaseQuota,
 };
