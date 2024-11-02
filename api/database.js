@@ -65,7 +65,8 @@ async function getUserToken(email, password, res) {
         const token = createSignInToken(
           doc.id,
           doc.data().email,
-          doc.data().role
+          doc.data().role,
+          doc.data().subscriptionPlan ? doc.data().subscriptionPlan.id : null
         );
         await setTokenRedis(token, email);
         return res.status(200).send({ result: true, data: token });
@@ -116,6 +117,9 @@ async function getUser(req, res) {
             doc.data().subscriptionEndDate != null
               ? doc.data().subscriptionEndDate.toDate()
               : 0,
+          subscriptionPlan: doc.data().subscriptionPlan
+            ? doc.data().subscriptionPlan.id
+            : null,
         },
       });
     }
@@ -167,6 +171,9 @@ async function getUsers(req, res) {
           doc.data().subscriptionEndDate != null
             ? doc.data().subscriptionEndDate.toDate()
             : 0,
+        subscriptionPlan: doc.data().subscriptionPlan
+          ? doc.data().subscriptionPlan.id
+          : null,
       });
     });
     return res.status(200).send({
