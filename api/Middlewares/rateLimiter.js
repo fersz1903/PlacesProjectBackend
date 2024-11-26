@@ -81,6 +81,15 @@ const checkQuotaLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+const formSaveLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 3,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: "Çok Fazla İstek Yapıldı, Lütfen Daha Sonra Tekrar Deneyin",
+  validate: { xForwardedForHeader: false },
+});
+
 module.exports = {
   loginLimiter,
   limiter,
@@ -91,4 +100,5 @@ module.exports = {
   sendMailLimiter,
   validateLimiter,
   checkQuotaLimiter,
+  formSaveLimiter,
 };

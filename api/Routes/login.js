@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { addData, registerUser, getUserToken } = require("../database.js");
+const { getUserToken, registerUser } = require("../database.js");
 
 // "url/login/<>"
 
@@ -20,6 +20,10 @@ router.post("/signin", async (req, res) => {
   } catch (error) {
     res.status(500).send({ result: false, data: "Sign In Server Error!" });
   }
+});
+
+router.post("/signup", async (req, res) => {
+  return await registerUser(req, res);
 });
 
 module.exports = router;

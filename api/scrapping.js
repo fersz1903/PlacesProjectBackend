@@ -192,7 +192,13 @@ const FORBIDDEN_TYPES = [
   "sentry.io",
   "example.com",
   ".js",
-  "abc.xyz"
+  "abc.xyz",
+];
+
+const FORBIDDEN_CONTAINS = [
+  "app-smart",
+  "sentry",
+  "844eecb5a0da4da99b3918516f5a379d",
 ];
 
 escapeSym = (sym) => {
@@ -234,6 +240,9 @@ extractEmails = (html) => {
         // Exlude if forbidden
         for (var i = 0; i < FORBIDDEN_TYPES.length; i++) {
           if (item[1].endsWith(FORBIDDEN_TYPES[i])) return false;
+        }
+        for (var i = 0; i < FORBIDDEN_CONTAINS.length; i++) {
+          if (item[1].includes(FORBIDDEN_CONTAINS[i])) return false;
         }
         return true;
       })

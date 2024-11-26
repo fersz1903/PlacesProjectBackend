@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { validateToken, verifyAdminRole } = require("../jwt");
+const { checkCaptchaToken } = require("../gCaptcha");
 require("dotenv").config();
 const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
 
@@ -22,6 +23,10 @@ router.post("/validateAdmin", (req, res) => {
     return res.status(404).json({ result: false, data: "No token provided" });
   }
   return verifyAdminRole(token, res);
+});
+
+router.post("/validateCaptcha", async (req, res) => {
+  return await checkCaptchaToken(req, res);
 });
 
 module.exports = router;

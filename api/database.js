@@ -11,14 +11,25 @@ const {
 } = require("firebase-admin/firestore");
 const uuid = require("uuid");
 const Joi = require("joi");
-
 const serviceAccount = require("./serviceAccount.json");
 const { response } = require("express");
-const { createSignInToken, decodeToken, verifyResetToken } = require("./jwt");
+const {
+  createSignInToken,
+  decodeToken,
+  verifyResetToken,
+  createEmailVerificateToken,
+} = require("./jwt");
 const { createHashedPassword, comparePassword } = require("./password.js");
 const { setTokenRedis } = require("./cache");
 require("dotenv").config();
 const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
+const {
+  registerUserSchema,
+  passwordSchema,
+} = require("./Schemas/registerUserSchema");
+const { sendEmailVerificationMail } = require("./EmailVerification");
+const { formSchema } = require("./Schemas/formSchema");
+const { checkCaptchaToken } = require("./gCaptcha");
 
 initializeApp({
   credential: cert(serviceAccount),
@@ -28,25 +39,42 @@ const db = getFirestore();
 
 function createUUId() {
   const newuuid = uuid.v4();
-  console.log("userid: ", newuuid);
+  //console.log("userid: ", newuuid);
   return newuuid;
 }
 
-const passwordSchema = Joi.object({
-  password: Joi.string()
-    .min(8) // En az 8 karakter uzunluğunda olmalı
-    .messages({
-      "string.min": "Şifre en az {#limit} karakter uzunluğunda olmalıdır.",
-      "string.pattern.base":
-        "Şifre en az bir büyük harf ve bir küçük harf içermelidir.",
-    })
-    .pattern(new RegExp("(?=.*[A-Z])")) // En az bir büyük harf içermeli
-    .pattern(new RegExp("(?=.*[a-z])")) // En az bir küçük harf içermeli
-    .pattern(new RegExp("(?=.*\\d)")) // En az bir rakam içermeli
-    .rule({ message: "Şifre en az bir rakam içermelidir." }),
-});
-
 //#region test
+
+async function getSubsEndsUsers() {
+  try {
+    const now = Timestamp.fromDate(new Date());
+    const threeDaysLater = Timestamp.fromDate(
+      new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+    );
+    // Firestore'da bitiş tarihi yarın olan abonelikleri sorgula
+    const usersRef = db.collection("users");
+
+    const snapshot = await usersRef
+      .where("subscription.endDate", "<=", threeDaysLater)
+      .where("subscription.endDate", ">", now)
+      .where("subscription.endIsNotified", "==", false)
+      .get();
+
+    return snapshot;
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function updateUserSubsNotified(userId) {
+  try {
+    db.collection("users").doc(userId).update({
+      "subscription.endIsNotified": true,
+    });
+  } catch (error) {
+    console.log("User notification update error: ", error);
+  }
+}
 
 //#endregion
 
@@ -66,9 +94,9 @@ async function getUserToken(email, password, res) {
           doc.id,
           doc.data().email,
           doc.data().role,
-          doc.data().subscriptionPlan ? doc.data().subscriptionPlan.id : null
+          doc.data().subscription?.plan ? doc.data().subscription.plan.id : null
         );
-        await setTokenRedis(token, email);
+        await setTokenRedis(token, email, doc);
         return res.status(200).send({ result: true, data: token });
       } else {
         return res
@@ -101,10 +129,6 @@ async function getUser(req, res) {
     if (!doc.exists) {
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
-      // TODO gruplanan userlara quota ref fieldi ekle, if quotaRef exist ise sharedData da işlem yap
-      // quotaRef = doc.data().quota;
-      // quotaDoc = await quotaRef.get();
-      // console.log(quotaDoc.data().quota);
       return res.status(200).send({
         result: true,
         data: {
@@ -114,11 +138,11 @@ async function getUser(req, res) {
           phone: doc.data().phone,
           quota: doc.data().quota,
           subscriptionEndDate:
-            doc.data().subscriptionEndDate != null
-              ? doc.data().subscriptionEndDate.toDate()
+            doc.data().subscription?.endDate != null
+              ? doc.data().subscription.endDate.toDate()
               : 0,
-          subscriptionPlan: doc.data().subscriptionPlan
-            ? doc.data().subscriptionPlan.id
+          subscriptionPlan: doc.data().subscription.plan
+            ? doc.data().subscription.plan.id
             : null,
         },
       });
@@ -139,6 +163,58 @@ async function userExist(email) {
   } catch (error) {
     console.log("Cannot get user: ", error);
     return error;
+  }
+}
+
+async function registerUser(req, res) {
+  try {
+    const { email, firstname, lastname, password } = req.body;
+    const { error } = registerUserSchema.validate({
+      email: email,
+      firstname: firstname,
+      lastname: lastname,
+      password: password,
+    });
+    if (error) {
+      return res
+        .status(400)
+        .json({ result: false, data: error.details[0].message });
+    }
+
+    if ((await userExist(email)) === true) {
+      return res
+        .status(403)
+        .json({ result: false, data: "User already exists!" });
+    }
+    const uuid = createUUId();
+    const docRef = db.collection("users").doc(uuid.toString());
+
+    const hashedPassword = await createHashedPassword(password);
+
+    const emailToken = createEmailVerificateToken(email);
+
+    await docRef.set({
+      email: email,
+      firstname: firstname,
+      lastname: lastname,
+      password: hashedPassword,
+      registrationDate: Timestamp.now(),
+      role: "user",
+      subscription: { endIsNotified: false, endDate: null, plan: null },
+      quota: 0,
+      isVerified: false,
+    });
+    sendEmailVerificationMail(emailToken, email);
+
+    return res
+      .status(200)
+      .send({ result: true, data: "User registered successfuly" });
+  } catch (error) {
+    console.log("Cannot register user: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, Cannot register user",
+    });
   }
 }
 
@@ -168,11 +244,11 @@ async function getUsers(req, res) {
             ? doc.data().registrationDate.toDate()
             : 0,
         subscriptionEndDate:
-          doc.data().subscriptionEndDate != null
-            ? doc.data().subscriptionEndDate.toDate()
+          doc.data().subscription?.endDate != null
+            ? doc.data().subscription?.endDate.toDate()
             : 0,
-        subscriptionPlan: doc.data().subscriptionPlan
-          ? doc.data().subscriptionPlan.id
+        subscriptionPlan: doc.data().subscription?.plan
+          ? doc.data().subscription?.plan?.id
           : null,
       });
     });
@@ -189,7 +265,7 @@ async function getUsers(req, res) {
   }
 }
 
-async function registerUser(req, res) {
+async function registerUserByAdmin(req, res) {
   try {
     const { email, firstname, lastname, password, phone } = req.body;
 
@@ -215,9 +291,11 @@ async function registerUser(req, res) {
       firstname: firstname,
       lastname: lastname,
       password: hashedPassword,
-      phone: phone,
       registrationDate: Timestamp.now(),
       role: "user",
+      subscription: { endIsNotified: false, endDate: null, plan: null },
+      quota: 0,
+      isVerified: false,
     });
 
     return res
@@ -418,17 +496,24 @@ async function updateUserSubscription(req, res) {
     const subsEndDate = new Date();
     subsEndDate.setDate(subsEndDate.getDate() + 30);
 
-    const premiumRef = db.collection("subscriptionPlans").doc("Premium");
+    // const premiumRef = db.collection("subscriptionPlans").doc("Premium");
+
+    if (
+      subscriptionType === "Premium" &&
+      snapshot.data().subscription?.plan?.id === "Premium"
+    ) {
+    }
+
     const updateRes = await userRef.update({
-      subscriptionEndDate: subsEndDate,
-      subscriptionPlan: subRef,
+      subscription: {
+        endDate: subsEndDate,
+        endIsNotified: false,
+        plan: subRef,
+      },
       quota:
-        subscriptionType === "Premium"
-          ? snapshot.data().subscriptionPlan
-            ? snapshot.data().subscriptionPlan.isEqual(premiumRef)
-              ? FieldValue.increment(subDoc.data().quota)
-              : subDoc.data().quota
-            : subDoc.data().quota
+        subscriptionType === "Premium" &&
+        snapshot.data().subscription?.plan?.id === "Premium"
+          ? FieldValue.increment(subDoc.data().quota)
           : subDoc.data().quota,
     });
 
@@ -601,7 +686,7 @@ async function checkQuota(req, res) {
     }
 
     const quota = doc.data().quota;
-    const subscriptionEndDate = doc.data().subscriptionEndDate;
+    const subscriptionEndDate = doc.data().subscription?.endDate ?? 0;
 
     if (!subscriptionEndDate || isDatePassed(subscriptionEndDate.toDate())) {
       return res.status(402).send({
@@ -1043,7 +1128,7 @@ async function checkUserSaveFileLimit(uid, searchRecCol) {
 
     const filesCount = snapshot.size;
 
-    const planRef = doc.data().subscriptionPlan;
+    const planRef = doc.data().subscription.plan;
     const planDoc = await planRef.get();
 
     if (planDoc.exists) {
@@ -1057,11 +1142,97 @@ async function checkUserSaveFileLimit(uid, searchRecCol) {
   }
 }
 
+async function verificateEmailToken(req, res) {
+  try {
+    const { token } = req.body;
+    const decoded = verifyResetToken(token);
+
+    if (decoded instanceof Error) {
+      return res.status(403).send({
+        result: false,
+        data: "Token expired or wrong token",
+      });
+    }
+
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.where("email", "==", decoded.email).get();
+
+    if (snapshot.empty) {
+      return res.status(404).send({
+        result: false,
+        data: "User not found",
+      });
+    }
+
+    const userDoc = snapshot.docs[0];
+
+    const docRef = userDoc.ref;
+
+    const updateRes = await docRef.update({
+      isVerified: true,
+    });
+
+    return res
+      .status(200)
+      .send({ result: true, data: "Email verificated successfuly" });
+  } catch (error) {
+    console.log("Cannot verificate email: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot verificate email",
+    });
+  }
+}
+
+//#region form
+async function saveForm(req, res) {
+  try {
+    const CaptchaResponse = req.header("CaptchaResponse");
+
+    const { error } = formSchema.validate(req.body, { abortEarly: false });
+
+    if (error) {
+      return res
+        .status(400)
+        .send({ result: false, data: error.details.map((err) => err.message) });
+    }
+
+    if (!CaptchaResponse) {
+      return res
+        .status(400)
+        .send({ result: false, data: "Missing Captcha Token!" });
+    }
+
+    const captchaValidation = await checkCaptchaToken(CaptchaResponse);
+
+    if (captchaValidation.success === false) {
+      return res
+        .status(captchaValidation.code)
+        .send({ result: false, data: "Captcha Failed" });
+    }
+
+    const formsRef = db.collection("forms");
+    const uuid = createUUId();
+    const docRef = formsRef.doc(uuid.toString());
+
+    await docRef.set({ formdata: req.body, formCreationDate: Timestamp.now() });
+
+    return res
+      .status(200)
+      .send({ result: true, data: "Form saved successfuly" });
+  } catch (error) {
+    console.log("error save form", error);
+    res.status(500).send({ result: false, data: "Error while saving form" });
+  }
+}
+
+//#endregion
+
 module.exports = {
   getUserToken,
   getUser,
   getUsers,
-  registerUser,
+  registerUserByAdmin,
   writeResetTokenUser,
   isResetTokenTrue,
   resetPassword,
@@ -1080,4 +1251,9 @@ module.exports = {
   deleteFile,
   updateUserSubscription,
   increaseQuota,
+  getSubsEndsUsers,
+  updateUserSubsNotified,
+  registerUser,
+  verificateEmailToken,
+  saveForm,
 };

@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const {
   getUsers,
-  registerUser,
+  registerUserByAdmin,
   getUsersCount,
   updateUser,
   deleteUser,
@@ -21,7 +21,7 @@ router.get("/getUsers", async (req, res) => {
 });
 
 router.post("/registerUser", async (req, res) => {
-  return await registerUser(req, res);
+  return await registerUserByAdmin(req, res);
 });
 
 router.get("/getUsersCount", async (req, res) => {

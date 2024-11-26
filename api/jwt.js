@@ -6,7 +6,7 @@ const TOKEN_HEADER_KEY = process.env.TOKEN_HEADER_KEY;
 
 function createSignInToken(_userid, _email, _role, _subPlan) {
   const token = jwt.sign(
-    { userId: _userid, email: _email, role: _role, subPlan:_subPlan },
+    { userId: _userid, email: _email, role: _role, subPlan: _subPlan },
     jwtSecret,
     {
       expiresIn: "3d",
@@ -41,7 +41,7 @@ function validateToken(token, res) {
         .json({ result: false, data: "Failed to authenticate token" });
     }
     try {
-      const tokenFromRedis = await getTokenFromRedis(jwt.decode(token).email);
+      const tokenFromRedis = await getTokenFromRedis(jwt.decode(token).email, token);
 
       if (tokenFromRedis == null) {
         return res
@@ -110,6 +110,13 @@ function verifyAdminRole(token, res) {
   }
 }
 
+function createEmailVerificateToken(_email) {
+  const token = jwt.sign({ email: _email }, jwtSecret, {
+    expiresIn: "10m",
+  });
+  return token;
+}
+
 module.exports = {
   createSignInToken,
   validateToken,
@@ -118,4 +125,5 @@ module.exports = {
   verifyResetToken,
   verifyAdminRole,
   validateLogToken,
+  createEmailVerificateToken,
 };

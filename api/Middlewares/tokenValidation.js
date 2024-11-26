@@ -18,7 +18,10 @@ async function verifyToken(req, res, next) {
         .json({ result: false, data: "Failed to authenticate token" });
     }
     try {
-      const tokenFromRedis = await getTokenFromRedis(jwt.decode(token).email);
+      const tokenFromRedis = await getTokenFromRedis(
+        jwt.decode(token).email,
+        token
+      );
 
       if (tokenFromRedis == null) {
         return res

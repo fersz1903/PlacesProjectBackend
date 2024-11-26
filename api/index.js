@@ -1,6 +1,3 @@
-const { addData, registerUser, getUserToken } = require("./database.js");
-const { createSignInToken, validateToken } = require("./jwt.js");
-const axios = require("axios");
 const express = require("express");
 const app = express();
 const cors = require("cors");
@@ -9,7 +6,6 @@ const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
 const tokenValidate = require("./Middlewares/tokenValidation.js");
 const isAdmin = require("./Middlewares/isAdmin.js");
-const { rateLimit } = require("express-rate-limit");
 const {
   validateLimiter,
   loginLimiter,
@@ -26,6 +22,7 @@ const login = require("./Routes/login.js");
 const validate = require("./Routes/validate.js");
 const admin = require("./Routes/admin.js");
 const user = require("./Routes/user.js");
+const form = require("./Routes/form.js");
 
 require("dotenv").config();
 
@@ -64,3 +61,4 @@ app.use("/login", loginLimiter, login);
 app.use("/validate", validateLimiter, validate);
 app.use("/admin", [tokenValidate, isAdmin], admin);
 app.use("/user", user);
+app.use("/form", form);
