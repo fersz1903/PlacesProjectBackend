@@ -82,8 +82,8 @@ const checkQuotaLimiter = rateLimit({
 });
 
 const formSaveLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  limit: 3,
+  windowMs: 5 * 60 * 1000, // 5 min
+  limit: 5,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: "Çok Fazla İstek Yapıldı, Lütfen Daha Sonra Tekrar Deneyin",

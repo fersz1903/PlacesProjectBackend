@@ -8,6 +8,11 @@ const {
   deleteUser,
   updateUserQuota,
   updateUserSubscription,
+  listAllForms,
+  deleteForm,
+  updateFormStatus,
+  getForm,
+  getFormsCount,
 } = require("../database.js");
 
 // "url/admin/<>"
@@ -42,6 +47,26 @@ router.put("/updateUserQuota", async (req, res) => {
 
 router.put("/updateUserSubscription", async (req, res) => {
   return await updateUserSubscription(req, res);
+});
+
+router.get("/getFormsCount", async (req, res) => {
+  return await getFormsCount(req, res);
+});
+
+router.get("/getForms", async (req, res) => {
+  return await listAllForms(req, res);
+});
+
+router.get("/getForm/:fid", async (req, res) => {
+  return await getForm(req, res);
+});
+
+router.put("/updateForm", async (req, res) => {
+  return await updateFormStatus(req, res);
+});
+
+router.delete("/deleteForm", async (req, res) => {
+  return await deleteForm(req, res);
 });
 
 module.exports = router;

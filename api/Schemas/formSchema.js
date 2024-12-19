@@ -13,6 +13,10 @@ const formSchema = Joi.object({
     "any.required": "formType alanı zorunludur.",
   }),
   contact: Joi.object({
+    companyName: Joi.string().min(2).max(100).messages({
+      "string.min": "Firma adı en az {#limit} karakter olmalıdır.",
+      "string.max": "Firma adı en fazla {#limit} karakter olmalıdır.",
+    }),
     name: Joi.string().min(2).max(100).required().messages({
       "string.min": "Ad en az {#limit} karakter olmalıdır.",
       "string.max": "Ad en fazla {#limit} karakter olmalıdır.",
@@ -63,6 +67,10 @@ const formSchema = Joi.object({
         "string.min": "Ürün en az {#limit} karakter olmalıdır.",
         "string.max": "Ürün en fazla {#limit} karakter olmalıdır.",
         "any.required": "product alanı zorunludur.",
+      }),
+      sellOrBuyPlace: Joi.string().min(2).max(255).messages({
+        "string.min": "sellPlace en az {#limit} karakter olmalıdır.",
+        "string.max": "sellPlace en fazla {#limit} karakter olmalıdır.",
       }),
       price: Joi.number()
         .positive()

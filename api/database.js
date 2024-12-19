@@ -30,6 +30,9 @@ const {
 const { sendEmailVerificationMail } = require("./EmailVerification");
 const { formSchema } = require("./Schemas/formSchema");
 const { checkCaptchaToken } = require("./gCaptcha");
+const { uploadImage } = require("./Middlewares/uploadImage");
+const upload = require("./Middlewares/uploadImage");
+const fs = require("fs");
 
 initializeApp({
   credential: cert(serviceAccount),
@@ -168,20 +171,14 @@ async function userExist(email) {
 
 async function registerUser(req, res) {
   try {
-    const { email, firstname, lastname, password } = req.body;
-    const { error } = registerUserSchema.validate({
-      email: email,
-      firstname: firstname,
-      lastname: lastname,
-      password: password,
-    });
+    const { error } = registerUserSchema.validate(req.body);
     if (error) {
       return res
         .status(400)
         .json({ result: false, data: error.details[0].message });
     }
 
-    if ((await userExist(email)) === true) {
+    if ((await userExist(req.body.email)) === true) {
       return res
         .status(403)
         .json({ result: false, data: "User already exists!" });
@@ -189,14 +186,15 @@ async function registerUser(req, res) {
     const uuid = createUUId();
     const docRef = db.collection("users").doc(uuid.toString());
 
-    const hashedPassword = await createHashedPassword(password);
+    const hashedPassword = await createHashedPassword(req.body.password);
 
-    const emailToken = createEmailVerificateToken(email);
+    const emailToken = createEmailVerificateToken(req.body.email);
 
     await docRef.set({
-      email: email,
-      firstname: firstname,
-      lastname: lastname,
+      email: req.body.email,
+      firstname: req.body.firstname,
+      lastname: req.body.lastname,
+      phone: req.body.phone,
       password: hashedPassword,
       registrationDate: Timestamp.now(),
       role: "user",
@@ -204,7 +202,7 @@ async function registerUser(req, res) {
       quota: 0,
       isVerified: false,
     });
-    sendEmailVerificationMail(emailToken, email);
+    sendEmailVerificationMail(emailToken, req.body.email);
 
     return res
       .status(200)
@@ -430,7 +428,7 @@ async function updateUserQuota(req, res) {
       return res.status(404).send({ result: false, data: "User Not Found" });
     } else {
       const updateRes = await userRef.update({
-        quota: quota,
+        quota: Number(quota),
       });
 
       if (updateRes instanceof Error) {
@@ -1184,6 +1182,14 @@ async function verificateEmailToken(req, res) {
   }
 }
 
+function clearFile(path) {
+  try {
+    fs.unlinkSync(path); // Yüklenen dosyayı sil
+  } catch (unlinkError) {
+    console.error("File deletion error:", unlinkError.message);
+  }
+}
+
 //#region form
 async function saveForm(req, res) {
   try {
@@ -1192,12 +1198,14 @@ async function saveForm(req, res) {
     const { error } = formSchema.validate(req.body, { abortEarly: false });
 
     if (error) {
+      clearFile(req?.file?.path ?? "");
       return res
         .status(400)
         .send({ result: false, data: error.details.map((err) => err.message) });
     }
 
     if (!CaptchaResponse) {
+      clearFile(req.file.path);
       return res
         .status(400)
         .send({ result: false, data: "Missing Captcha Token!" });
@@ -1206,6 +1214,7 @@ async function saveForm(req, res) {
     const captchaValidation = await checkCaptchaToken(CaptchaResponse);
 
     if (captchaValidation.success === false) {
+      clearFile(req.file.path);
       return res
         .status(captchaValidation.code)
         .send({ result: false, data: "Captcha Failed" });
@@ -1215,14 +1224,183 @@ async function saveForm(req, res) {
     const uuid = createUUId();
     const docRef = formsRef.doc(uuid.toString());
 
-    await docRef.set({ formdata: req.body, formCreationDate: Timestamp.now() });
+    await docRef.set({
+      formdata: { ...req.body, imagePath: req?.file?.path ?? null },
+      formCreationDate: Timestamp.now(),
+      status: "Beklemede",
+      isRead: false,
+    });
 
     return res
       .status(200)
       .send({ result: true, data: "Form saved successfuly" });
   } catch (error) {
+    clearFile(req?.file?.path ?? "");
     console.log("error save form", error);
     res.status(500).send({ result: false, data: "Error while saving form" });
+  }
+}
+
+async function getFormsCount(req, res) {
+  console.log("getFormsCount");
+  try {
+    const formsRef = db.collection("forms");
+    const snapshot = await formsRef.get();
+    if (snapshot.empty) {
+      return res.status(404).send({ result: false, data: "Forms Not Found" });
+    }
+    const formCount = snapshot.size;
+    return res.status(200).send({
+      result: true,
+      formsCount: formCount,
+    });
+  } catch (error) {
+    return res.status(500).send({
+      result: false,
+      data: "An error occured while getting forms count",
+    });
+  }
+}
+
+async function listAllForms(req, res) {
+  console.log("getForms");
+  try {
+    const formsRef = db.collection("forms");
+    const snapshot = await formsRef.get();
+    if (snapshot.empty) {
+      return res.status(404).send({ result: false, data: "Forms Not Found" });
+    }
+    const formsArray = [];
+    const formsCount = snapshot.size;
+
+    snapshot.forEach((doc) => {
+      formsArray.push({
+        fid: doc.id,
+        formCreationDate: doc.data()?.formCreationDate.toDate(),
+        formType: doc.data()?.formdata?.formType,
+        email: doc.data()?.formdata?.contact?.email,
+        status: doc.data()?.status,
+        isRead: doc.data()?.isRead,
+      });
+    });
+    return res.status(200).send({
+      result: true,
+      forms: formsArray,
+      formCount: formsCount,
+    });
+  } catch (error) {
+    console.log(error);
+    return res
+      .status(500)
+      .send({ result: false, data: "An error occured while getting forms" });
+  }
+}
+
+async function deleteForm(req, res) {
+  try {
+    const { fid } = req.body;
+    if (!fid) {
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties of form!" });
+    }
+    const deleteRes = await db.collection("forms").doc(fid).delete();
+    if (deleteRes instanceof Error) {
+      console.log(deleteRes);
+      return res
+        .status(500)
+        .send({ result: false, data: "Form could not deleted" });
+    }
+
+    return res
+      .status(200)
+      .send({ result: true, data: "Form deleted successfuly" });
+  } catch (error) {
+    console.log("Cannot delete form: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot delete form",
+    });
+  }
+}
+
+async function updateFormStatus(req, res) {
+  console.log("updateFormStatus");
+  try {
+    const { fid, status } = req.body;
+
+    if (!fid || !status || !["İşlemde", "Tamamlandı"].includes(status)) {
+      console.log(req.body);
+      return res
+        .status(400)
+        .json({ result: false, data: "Missing properties of form!" });
+    }
+
+    const formRef = db.collection("forms").doc(fid);
+    const snapshot = await formRef.get();
+
+    if (!snapshot.exists) {
+      console.log("No matching forms.");
+      return res.status(404).send({ result: false, data: "Form Not Found" });
+    } else {
+      const updateRes = await formRef.update({
+        status: status,
+      });
+
+      if (updateRes instanceof Error) {
+        console.log(updateRes);
+        return res
+          .status(500)
+          .send({ result: false, data: "form infos could not write db" });
+      }
+    }
+    return res
+      .status(200)
+      .send({ result: true, data: "Form updated successfuly" });
+  } catch (error) {
+    console.log("Cannot update form: ", error);
+    return res.status(500).send({
+      result: false,
+      data: "Server Error, cannot update form",
+    });
+  }
+}
+
+async function getForm(req, res) {
+  console.log("getForm");
+  try {
+    const { fid } = req.params;
+
+    if (!fid) {
+      return res
+        .status(400)
+        .json({ result: false, error: "Missing properties" });
+    }
+
+    const fileRef = db.collection("forms").doc(fid);
+
+    const snapshot = await fileRef.get();
+
+    if (!snapshot.exists) {
+      return res.status(404).send({ result: false, data: "Form Not Found" });
+    }
+
+    if (snapshot.data()?.isRead == false) {
+      fileRef.update({
+        isRead: "True",
+      });
+    }
+
+    return res.status(200).send({
+      result: true,
+      fid: snapshot.id,
+      ...snapshot.data(),
+    });
+  } catch (error) {
+    console.log(error);
+    return res
+      .status(500)
+      .send({ result: false, data: "An error occured while getting form" });
   }
 }
 
@@ -1256,4 +1434,9 @@ module.exports = {
   registerUser,
   verificateEmailToken,
   saveForm,
+  listAllForms,
+  deleteForm,
+  updateFormStatus,
+  getForm,
+  getFormsCount,
 };

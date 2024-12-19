@@ -15,6 +15,11 @@ const registerUserSchema = Joi.object({
     "string.max": "Soyisim en fazla {#limit} karakter olmalıdır.",
     "any.required": "Soyisim alanı zorunludur.",
   }),
+  phone: Joi.string().min(11).max(20).required().messages({
+    "string.min": "Telefon en az {#limit} karakter olmalıdır.",
+    "string.max": "Telefon en fazla {#limit} karakter olmalıdır.",
+    "any.required": "Telefon alanı zorunludur.",
+  }),
   password: Joi.string()
     .min(8) // En az 8 karakter uzunluğunda olmalı
     .messages({
