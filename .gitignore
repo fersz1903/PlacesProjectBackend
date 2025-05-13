@@ -7,4 +7,5 @@ api/credentials.json
 api/logs/
 api/Dockerfile
 api/uploads/*
+api/images/*
 .vscode

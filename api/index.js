@@ -23,6 +23,7 @@ const validate = require("./Routes/validate.js");
 const admin = require("./Routes/admin.js");
 const user = require("./Routes/user.js");
 const form = require("./Routes/form.js");
+const path = require("path");
 
 require("dotenv").config();
 
@@ -62,3 +63,4 @@ app.use("/validate", validateLimiter, validate);
 app.use("/admin", [tokenValidate, isAdmin], admin);
 app.use("/user", user);
 app.use("/form", form);
+app.use('/images', express.static(path.join(__dirname, 'images')));
